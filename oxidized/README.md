@@ -1,1 +1,0 @@
-uv tool run maturin develop --release

@@ -1,5 +1,5 @@
-[project]
-name = "oxidized"
+[Project]
+name = "oxi_quizkit"
 version = "0.1.0"
 description = ""
 authors = [{ name = "M. J. Wilson" }]
@@ -15,4 +15,4 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
-module-name = "oxidized"
+module-name = "oxi_quizkit"

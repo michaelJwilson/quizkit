@@ -1,0 +1,37 @@
+[package]
+name = "oxi_quizkit"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "oxi_quizkit"
+crate-type = ["cdylib"]
+
+[dependencies]
+rayon = "*" # threading
+numpy = { version = "*" }
+pyo3 = { version = "*", features = ["extension-module"] }
+ndarray = {version = "*", features = ["rayon"] } # multi-slice arrays, broadcastring; no linear algebra.
+itertools = "*"
+rand = "*"
+nalgebra = "*" # spatial transformations, rotation, etc.
+serde = {version = "*", features = ["derive"]}
+serde_json = "*"
+GSL = "*"
+num-complex = "*"
+oxifft = "*" # rust implementation of fftw. 
+# faer = "*" # 2D linear algebra with no BLAS/LAPACK calling.
+
+[dev-dependencies]
+approx = ">0.4"
+criterion = ">0.4"
+
+[profile.release]
+# codegen-units = 1
+opt-level = 3
+lto = true
+# overflow-checks = false
+
+[[bench]]
+name = "benchmarks"
+harness = false
