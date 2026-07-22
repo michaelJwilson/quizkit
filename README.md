@@ -26,6 +26,8 @@ uv pip install -e ".[dev,test,build]"
 cd ./oxiquizkit
 
 ## Build rust bankend
+export HDF5_DIR="$(brew --prefix hdf5@1.10)"
+
 maturin develop --release
 
 ## Usage
