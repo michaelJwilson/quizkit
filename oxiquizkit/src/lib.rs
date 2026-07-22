@@ -1,31 +1,26 @@
-use ndarray;
-use ndarray::{Array, Array1, Array2, Array3};
+use ndarray::ArrayD;
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArray3, PyArrayDyn, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray3, PyReadonlyArrayDyn,
+    IntoPyArray, PyArrayDyn, PyReadonlyArrayDyn,
 };
-use pyo3::prelude::{pymodule, PyModule, PyResult, Python};
-use rayon::prelude::*;
+use pyo3::prelude::*;
 
-// See https://itnext.io/how-to-bind-python-numpy-with-rust-ndarray-2efa5717ed21
 #[pymodule]
 fn oxiquizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     #[pyfn(m)]
     fn nb<'py>(
         py: Python<'py>,
-        ink: PyReadonlyArray1<f64>,
-        inn: PyReadonlyArray1<f64>,
-        inp: PyReadonlyArray1<f64>,
-    ) -> &'py PyArray1<f64> {
+        ink: PyReadonlyArrayDyn<'py, f64>,
+        inn: PyReadonlyArrayDyn<'py, f64>,
+        inp: PyReadonlyArrayDyn<'py, f64>,
+    ) -> &'py PyArrayDyn<f64> {
         let k = ink.as_array();
         let n = inn.as_array();
         let p = inp.as_array();
 
-        let shape = k.shape();
-        let mut result = Array1::<f64>::zeros(shape[0]);
-        let mut vresult = result.view_mut();
+        // NB k.raw_dim() returns the .shape of the array.
+        let mut result = ArrayD::<f64>::zeros(k.raw_dim());
 
-        __oxiquizkit::nb(&mut vresult, &k, &n, &p);
+        __oxiquizkit::nb(&mut result, &k, &n, &p);
 
         result.into_pyarray(py)
     }
@@ -35,19 +30,21 @@ fn oxiquizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
 mod __oxiquizkit {
     use libm::lgamma;
-    use ndarray::Zip;
-    use numpy::ndarray::{ArrayView1, ArrayViewMut1};
+    use ndarray::{ArrayViewD, Zip};
+    use rayon::prelude::*;
 
+    #[inline(always)]
     fn ln_factorial(n: u32) -> f64 {
         lgamma(n as f64 + 1.0)
     }
 
     pub fn nb(
-        r: &mut ArrayViewMut1<'_, f64>,
-        k: &ArrayView1<'_, f64>,
-        n: &ArrayView1<'_, f64>,
-        p: &ArrayView1<'_, f64>,
+        r: &mut ndarray::ArrayD<f64>,
+        k: &ArrayViewD<'_, f64>,
+        n: &ArrayViewD<'_, f64>,
+        p: &ArrayViewD<'_, f64>,
     ) {
+        // NB rayon threaded; exclude for small arrays.
         Zip::from(r)
             .and(k)
             .and(n)
@@ -56,10 +53,38 @@ mod __oxiquizkit {
                 let n32 = n as u32;
                 let k32 = k as u32;
 
-                // NB in-place
-                *r = ln_factorial(k32 + n32 - 1) - ln_factorial(n32 - 1) - ln_factorial(k32)
-                    + k * (1. - p).ln()
+                *r = ln_factorial(k32 + n32 - 1)
+                    - ln_factorial(n32 - 1)
+                    - ln_factorial(k32)
+                    + k * (1.0 - p).ln()
                     + n * p.ln();
             });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::__oxiquizkit;
+    use approx::assert_relative_eq; 
+    use ndarray::{array, ArrayD};
+
+    #[test]
+    fn test_nb_distribution_nd() {
+        // NB convert fixed dimension rust arrays to dynamically sized.
+        let k = array![[2.0, 0.0], [2.0, 0.0]].into_dyn();
+        let n = array![[3.0, 3.0], [3.0, 3.0]].into_dyn();
+        let p = array![[0.4, 0.4], [0.4, 0.4]].into_dyn();
+        
+        let mut result = ArrayD::<f64>::zeros(k.raw_dim());
+        
+        __oxiquizkit::nb(&mut result, &k.view(), &n.view(), &p.view());
+        
+        let expected_log_pmf_0 = 0.13824_f64.ln();
+        let expected_log_pmf_1 = 0.064_f64.ln();
+
+        assert_relative_eq!(result[[0, 0]], expected_log_pmf_0, epsilon = 1e-6);
+        assert_relative_eq!(result[[0, 1]], expected_log_pmf_1, epsilon = 1e-6);
+        assert_relative_eq!(result[[1, 0]], expected_log_pmf_0, epsilon = 1e-6);
+        assert_relative_eq!(result[[1, 1]], expected_log_pmf_1, epsilon = 1e-6);
     }
 }
