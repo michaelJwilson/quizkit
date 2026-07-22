@@ -2,7 +2,7 @@
 name = "quizkit"
 version = "0.1.0"
 description = ""
-authors = [{ name = "M. J. Wilson", email = "mjwilson@princeton.edu" }]
+authors = [{ name = "M. J. Wilson" }]
 requires-python = ">=3.12.2"
 readme = "README.md"
 dependencies = [
@@ -39,7 +39,7 @@ test = [
 ]
 
 [project.scripts]
-run_quizkit = "social.scripts.run_social:main"
+run_quizkit = "quizkit.scripts.run_quizkit:main"
 
 [tool.hatch.build.targets.sdist]
 include = ["python/quizkit"]
