@@ -7,11 +7,15 @@ edition = "2021"
 name = "oxiquizkit"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+extension-module = ["pyo3/extension-module"]
+default = []
+
 [dependencies]
 libm = "*"
 rayon = "*" # threading
 numpy = { version = "*" }
-pyo3 = { version = "*", features = ["extension-module"] }
+pyo3 = { version = "*" }
 ndarray = {version = "*", features = ["rayon"] } # multi-slice arrays, broadcastring; no linear algebra.
 itertools = "*"
 rand = "*"
