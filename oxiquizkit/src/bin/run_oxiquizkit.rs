@@ -2,7 +2,6 @@ use oxiquizkit::readers::read_hdf5;
 use oxiquizkit::holography::HolographyEngine;
 use ndarray::Array2;
 use std::env;
-use std::path::PathBuf;
 use std::process;
 
 fn process_image(hdf5_str: &str) -> ndarray::ArrayD<f64> {
@@ -42,7 +41,7 @@ fn main() {
 
     let iterations = 25;
 
-    let slm_phase = holography_engine.gerchberg_saxton_slm_phase(
+    let _slm_phase = holography_engine.gerchberg_saxton_slm_phase(
         &target_amplitude, 
         &slm_illumination, 
         iterations

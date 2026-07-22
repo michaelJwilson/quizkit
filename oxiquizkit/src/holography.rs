@@ -3,8 +3,6 @@ use fftw::types::*;
 use fftw::array::AlignedVec;
 use num_complex::Complex64;
 use ndarray::Array2;
-
-use ndarray::Zip;
 use rand::Rng;
 
 pub struct HolographyEngine {
