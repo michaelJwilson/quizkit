@@ -44,20 +44,20 @@ impl HolographyEngine {
 
         for p in phases.iter_mut() {
             let raw_u32 = rng.gen::<u32>(); 
-            *p = (raw_u32 as f64);
+            *p = raw_u32 as f64;
         }
 
         phases 
     }
 
-    pub fn initialize_random_phase(buf: &mut [Complex64], illumination: &Array2<f64>) {
+    pub fn initialize_random_phase(buf: &mut [Complex64], illumination: &Array2<f64>, illumination_precision: f64) {
         let ill_slice = illumination.as_slice().unwrap();
         let uniforms = Self::generate_uniforms(buf.len());
 
         const TO_RAD: f64 = (2.0 * std::f64::consts::PI) / (u32::MAX as f64 + 1.0);
 
-        for ((c, &amp), &phase) in buf.iter_mut().zip(ill_slice.iter()).zip(uniforms.iter()) {
-            *c = Complex64::from_polar(amp, TO_RAD * phase);
+        for ((c, &amp), &uniform) in buf.iter_mut().zip(ill_slice.iter()).zip(uniforms.iter()) {
+            *c = Complex64::from_polar( amp + illumination_precision * (uniform - 0.5), TO_RAD * uniform);
         }
     }
     
@@ -102,7 +102,7 @@ impl HolographyEngine {
         let target_amp_slice = target_amplitude.as_slice().unwrap();
         let slm_ill_slice = slm_illumination.as_slice().unwrap();
 
-        Self::initialize_random_phase(&mut self.inb, slm_illumination);
+        Self::initialize_random_phase(&mut self.inb, slm_illumination, 0.1);
 
         for iter in 0..max_iters {
             self.forward_plan.c2c(&mut self.inb, &mut self.outb).unwrap();
