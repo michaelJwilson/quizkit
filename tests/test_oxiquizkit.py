@@ -4,7 +4,7 @@ import oxiquizkit
 
 @pytest.fixture
 def nb_large_inputs():
-    shape = (1000, 1000)
+    shape = (1_000, 1_000)
     
     k = np.random.randint(0, 50, size=shape).astype(np.float64)
     n = np.random.randint(1, 10, size=shape).astype(np.float64)

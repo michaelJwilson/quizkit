@@ -104,3 +104,7 @@ isort.required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ALL"]
+
+# NB requires init with pytest --benchmark-autosave
+[tool.pytest.ini_options]
+addopts = "--benchmark-autosave --benchmark-compare=0001 --benchmark-compare-fail=mean:5%"
