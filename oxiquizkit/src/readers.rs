@@ -17,7 +17,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_read_dummy_h5() -> hdf5::Result<()> {
+    fn test_read_hdf5() -> hdf5::Result<()> {
         let dataset_name = "test_image";
 
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
