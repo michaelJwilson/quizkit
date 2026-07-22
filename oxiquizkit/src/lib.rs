@@ -4,8 +4,8 @@ use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyArrayDyn, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray3, PyReadonlyArrayDyn,
 };
-use rayon::prelude::*;
 use pyo3::prelude::{pymodule, PyModule, PyResult, Python};
+use rayon::prelude::*;
 
 // See https://itnext.io/how-to-bind-python-numpy-with-rust-ndarray-2efa5717ed21
 #[pymodule]
@@ -25,27 +25,21 @@ fn oxiquizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
         let mut result = Array1::<f64>::zeros(shape[0]);
         let mut vresult = result.view_mut();
 
-        __core::nb(&mut vresult, &k, &n, &p);
-        
+        __oxiquizkit::nb(&mut vresult, &k, &n, &p);
+
         result.into_pyarray(py)
     }
 
     Ok(())
 }
 
-mod __core {
-    // extern crate rayon;
-    // use rayon::prelude::*; // move to top.
-
+mod __oxiquizkit {
     use libm::lgamma;
-    use ndarray::{arr1, Array1, Array2, Array3, Zip}; // redeclaration?
-    use numpy::ndarray::{
-        ArrayView1, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut1, ArrayViewMut2,
-        ArrayViewMut3, ArrayViewMutD,
-    };
+    use ndarray::Zip;
+    use numpy::ndarray::{ArrayView1, ArrayViewMut1};
 
     fn ln_factorial(n: u32) -> f64 {
-       lgamma(n as f64 + 1.0)
+        lgamma(n as f64 + 1.0)
     }
 
     pub fn nb(
@@ -54,25 +48,11 @@ mod __core {
         n: &ArrayView1<'_, f64>,
         p: &ArrayView1<'_, f64>,
     ) {
-        /*
-        See:
-            https://docs.rs/GSL/latest/rgsl/gamma_beta/factorials/fn.lnchoose.html
-            https://mathworld.wolfram.com/NegativeBinomialDistribution.html
-            https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.nbinom.html
-        */
-
         Zip::from(r)
             .and(k)
             .and(n)
             .and(p)
             .par_for_each(|r, &k, &n, &p| {
-                /*
-                See:
-                  https://docs.rs/GSL/latest/rgsl/gamma_beta/factorials/fn.lnchoose.html
-                  https://mathworld.wolfram.com/NegativeBinomialDistribution.html
-                  https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.nbinom.html
-                */
-
                 let n32 = n as u32;
                 let k32 = k as u32;
 
