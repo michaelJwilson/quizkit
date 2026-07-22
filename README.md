@@ -23,6 +23,8 @@ uv pip install -e .
 ## Dev install
 uv pip install -e ".[dev,test,build]"
 
+cd ./oxiquizkit
+
 ## Build rust bankend
 maturin develop --release
 
@@ -44,3 +46,4 @@ run_quizkit
 │       └── data/
 │           └── input.csv
 │           └──	input2.json
+├── oxiquizkit/
