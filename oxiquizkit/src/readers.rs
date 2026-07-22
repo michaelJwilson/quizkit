@@ -14,11 +14,14 @@ mod tests {
     use super::*;
     use ndarray::array;
     use std::fs;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_read_dummy_h5() -> hdf5::Result<()> {
-        let filepath = "test_dataset.h5";
         let dataset_name = "test_image";
+
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let filepath = temp_file.path().to_str().unwrap();
 
         {
             let file = hdf5::File::create(filepath)?;
@@ -26,7 +29,8 @@ mod tests {
             let data = array![[1.0, 1.5], [2.0, 2.5]].into_dyn();
 
             let builder = group.new_dataset::<f64>();
-            let dataset = builder.create(dataset_name, data.shape())?;
+            let dataset = builder.shape(data.shape()).create(dataset_name)?;
+
             dataset.write(&data)?;
         }
 
@@ -35,8 +39,6 @@ mod tests {
 
         assert_eq!(read_data.shape(), &[2, 2]);
         assert_eq!(read_data[[1, 0]], 2.0);
-
-        let _ = fs::remove_file(filepath);
 
         Ok(())
     }
