@@ -1,4 +1,4 @@
-use fitsio::FitsFile;
+// use fitsio::FitsFile;
 use ndarray::ArrayD;
 
 pub fn read_hdf5(filepath: &str, dataset_name: &str) -> hdf5::Result<ArrayD<f64>> {

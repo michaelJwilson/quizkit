@@ -1,4 +1,5 @@
 use oxiquizkit::readers::read_hdf5;
+use oxiquizkit::fourier::fft_image_r2c;
 use std::env;
 use std::path::PathBuf;
 use std::process;
@@ -24,6 +25,7 @@ fn main() {
     }
 
     let hdf5_path = &args[1];
+    let image = process_image(hdf5_path);
 
-    _ = process_image(hdf5_path);
+    let fft_result = fft_image_r2c(&image);
 }
