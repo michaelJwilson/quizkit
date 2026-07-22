@@ -1,3 +1,20 @@
+use pyo3::prelude::*;
+
+// 1. Tell Rust compiler to look for the other files
+pub mod core;
+pub mod python;
+
+// 2. Define the main Python module entry point here
+#[pymodule]
+fn oxiquizkit(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // 3. Register the function from the python module
+    m.add_function(wrap_pyfunction!(python::nb, m)?)?;
+    Ok(())
+}
+
+
+
+/*
 use ndarray::ArrayD;
 use numpy::{
     IntoPyArray, PyArrayDyn, PyReadonlyArrayDyn,
@@ -77,4 +94,4 @@ pub mod core {
                     + n * p.ln();
             });
     }
-}
+}*/

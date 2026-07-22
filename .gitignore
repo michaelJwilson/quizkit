@@ -1,2 +1,3 @@
 oxidized/target/
 .benchmarks/
+tests/__pycache__/
