@@ -6,7 +6,13 @@ logger = logging.getLogger(__name__)
 
 # TODO
 def write_hdf5(
-    filepath, data, group_name, dataset_name, compression="gzip", **metadata
+    filepath, 
+    data, 
+    group_name, 
+    dataset_name, 
+    compression="gzip", 
+    overwrite=False, 
+    **metadata
 ):
     try:
         with h5py.File(filepath, "a") as f:
@@ -15,8 +21,21 @@ def write_hdf5(
             else:
                 h5_group = f[group_name]
 
+            if dataset_name in h5_group:
+                if overwrite:
+                    logger.info(f"Dataset '{dataset_name}' already exists. Overwriting...")
+                    del h5_group[dataset_name]
+                else:
+                    logger.warning(
+                        f"Dataset '{dataset_name}' already exists in group '{group_name}'. "
+                        "Set override=True to overwrite. Skipping write."
+                    )
+                    return
+
             dataset = h5_group.create_dataset(
-                name=dataset_name, data=data, compression=compression
+                name=dataset_name, 
+                data=data, 
+                compression=compression
             )
 
             for key, value in metadata.items():

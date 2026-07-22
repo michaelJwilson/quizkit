@@ -1,8 +1,12 @@
 import logging
 import time
-from importlib import resources
-
 import oxiquizkit
+
+from pathlib import Path
+from importlib import resources
+from quizkit.simulation import get_galsim_image
+from quizkit.writers import write_hdf5
+from quizkit.plotting import plot_image
 
 start_time = time.time()
 
@@ -38,6 +42,12 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    image = get_galsim_image()
+
+    # TODO
+    # write_hdf5("./results/test_image.hdf5", image, "test_group", "test_data")
+    plot_image("./results/test_image.pdf", image)
+
     logger.info("Done.")
 
 

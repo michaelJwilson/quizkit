@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 
 
-def plot_image(data):
+
+def plot_image(filepath, data):
     fig, ax = plt.subplots(figsize=(6, 6))
     cax = ax.imshow(data, cmap="inferno", origin="lower")
 
@@ -11,5 +12,4 @@ def plot_image(data):
     ax.set_xlabel("Pixels")
     ax.set_ylabel("Pixels")
 
-    plt.tight_layout()
-    plt.show()
+    fig.savefig(filepath, dpi=300, bbox_inches="tight")

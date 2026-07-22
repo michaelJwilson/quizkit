@@ -2,3 +2,4 @@ oxidized/target/
 .benchmarks/
 __pycache__/
 quizkit.log
+results/
