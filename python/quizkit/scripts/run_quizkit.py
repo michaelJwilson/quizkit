@@ -44,9 +44,9 @@ logger = logging.getLogger(__name__)
 def main():
     image = get_galsim_image()
 
-    # TODO
-    # write_hdf5("./results/test_image.hdf5", image, "test_group", "test_data")
-    plot_image("./results/test_image.pdf", image)
+    # TODO mkdir etc.
+    # write_hdf5("./results/data/test_image.hdf5", image, "test_group", "test_data")
+    plot_image("./results/plots/test_image.pdf", image)
 
     logger.info("Done.")
 
