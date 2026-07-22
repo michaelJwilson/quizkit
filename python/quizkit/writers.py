@@ -10,13 +10,11 @@ def write_hdf5(
 ):
     try:
         with h5py.File(filepath, "a") as f:
-            # Safely get or create the group without overwriting the string variable
             if group_name not in f:
                 h5_group = f.create_group(group_name)
             else:
                 h5_group = f[group_name]
 
-            # Use the retrieved h5_group object
             dataset = h5_group.create_dataset(
                 name=dataset_name, data=data, compression=compression
             )
@@ -24,7 +22,6 @@ def write_hdf5(
             for key, value in metadata.items():
                 dataset.attrs[key] = value
 
-        # Variables now match the function arguments perfectly
         logger.info(
             f"Successfully written {data.shape} dataset to {filepath} at {group_name}/{dataset_name}"
         )
