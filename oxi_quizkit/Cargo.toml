@@ -8,6 +8,7 @@ name = "oxi_quizkit"
 crate-type = ["cdylib"]
 
 [dependencies]
+libm = "*"
 rayon = "*" # threading
 numpy = { version = "*" }
 pyo3 = { version = "*", features = ["extension-module"] }
