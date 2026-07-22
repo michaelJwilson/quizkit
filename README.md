@@ -1,5 +1,5 @@
 # quizkit
-A Python framework for basic quantum computing.
+A Python framework for quantum computing (quizes).
 
 ## Prerequisites
 * **Python:** `>=3.12.2`
@@ -22,6 +22,9 @@ uv pip install -e .
 
 ## Dev install
 uv pip install -e ".[dev,test,build]"
+
+## Build rust bankend
+maturin develop --release
 
 ## Usage
 run_quizkit

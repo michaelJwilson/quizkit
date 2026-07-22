@@ -4,11 +4,12 @@ use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyArrayDyn, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray3, PyReadonlyArrayDyn,
 };
+use rayon::prelude::*;
 use pyo3::prelude::{pymodule, PyModule, PyResult, Python};
 
 // See https://itnext.io/how-to-bind-python-numpy-with-rust-ndarray-2efa5717ed21
 #[pymodule]
-fn oxi_quizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn oxiquizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     #[pyfn(m)]
     fn nb<'py>(
         py: Python<'py>,
@@ -33,8 +34,8 @@ fn oxi_quizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 }
 
 mod __core {
-    extern crate rayon;
-    use rayon::prelude::*; // move to top.
+    // extern crate rayon;
+    // use rayon::prelude::*; // move to top.
 
     use libm::lgamma;
     use ndarray::{arr1, Array1, Array2, Array3, Zip}; // redeclaration?

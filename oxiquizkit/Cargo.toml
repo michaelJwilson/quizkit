@@ -1,10 +1,10 @@
 [package]
-name = "oxi_quizkit"
+name = "oxiquizkit"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "oxi_quizkit"
+name = "oxiquizkit"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -28,8 +28,8 @@ approx = ">0.4"
 criterion = ">0.4"
 
 # NB "target-cpu=arm64"; "target-cpu=native".
-[build]
-rustflags = ["-C", "target-cpu=arm64"]
+# [build]
+# rustflags = ["-C", "target-cpu=arm64"]
 
 [profile.release]
 # codegen-units = 1

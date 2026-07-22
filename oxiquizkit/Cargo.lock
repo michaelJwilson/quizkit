@@ -545,27 +545,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
-name = "oxi_quizkit"
-version = "0.1.0"
-dependencies = [
- "GSL",
- "approx",
- "criterion",
- "itertools 0.12.1",
- "libm",
- "nalgebra",
- "ndarray",
- "num-complex",
- "numpy",
- "oxifft",
- "pyo3",
- "rand",
- "rayon",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "oxifft"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -604,6 +583,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "oxiquizkit"
+version = "0.1.0"
+dependencies = [
+ "GSL",
+ "approx",
+ "criterion",
+ "itertools 0.12.1",
+ "libm",
+ "nalgebra",
+ "ndarray",
+ "num-complex",
+ "numpy",
+ "oxifft",
+ "pyo3",
+ "rand",
+ "rayon",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
