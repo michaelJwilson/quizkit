@@ -4,6 +4,7 @@ pub mod readers;
 pub mod	holography;
 pub mod core;
 pub mod python;
+pub mod fibonacci;
 
 #[pymodule]
 fn oxiquizkit(m: &Bound<'_, PyModule>) -> PyResult<()> {

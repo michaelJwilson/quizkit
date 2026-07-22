@@ -1,50 +1,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box;
+use oxiquizkit::fibonacci::{fibonacci_slow, fibonacci_fast};
 
-fn fibonacci_slow(n: u64) -> u64 {
-    match n {
-        0 => 1,
-        1 => 1,
-        n => fibonacci_slow(n - 1) + fibonacci_slow(n - 2),
-    }
-}
-
-fn fibonacci_fast(n: u64) -> u64 {
-    let mut a = 0;
-    let mut b = 1;
-
-    match n {
-        0 => b,
-        _ => {
-            for _ in 0..n {
-                let c = a + b;
-                a = b;
-                b = c;
-            }
-            b
-        }
-    }
-}
-
-pub fn criterion_benchmark(c: &mut Criterion) {
+pub fn benchmark_fibonacci(c: &mut Criterion) {
     c.bench_function("fib(20)", |b| b.iter(|| fibonacci_fast(black_box(20))));
 }
 
-fn bench_fibonacci(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Fibonacci");
-
-    for i in [20u64, 21u64].iter() {
-        group.bench_with_input(BenchmarkId::new("Recursive", i), i, |b, i| {
-            b.iter(|| fibonacci_slow(*i))
-        });
-
-        group.bench_with_input(BenchmarkId::new("Iterative", i), i, |b, i| {
-            b.iter(|| fibonacci_fast(*i))
-        });
-    }
-
-    group.finish();
-}
-
-criterion_group!(benches, criterion_benchmark, bench_fibonacci);
+criterion_group!(benches, benchmark_fibonacci);
 criterion_main!(benches);
