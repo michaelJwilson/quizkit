@@ -16,17 +16,19 @@ tempfile = "3.8"
 libm = "*"
 serde = {version = "*", features = ["derive"]}
 serde_json = "*"
-rayon = "*" # threading
+rayon = "*"
 numpy = { version = "0.29" }
 ndarray = {version = "*", features = ["rayon"] } # multi-slice arrays, broadcastring; no linear algebra.
 itertools = "*"
 rand = "*"
 hdf5 = "0.8.1"
-fitsio = "0.21.10"
+fftw = "0.8.0"
+num-complex = "*"
+# fitsio = "0.21.10"
+# oxifft = "*" # rust implementation of fftw.
 # nalgebra = "*" # spatial transformations, rotation, etc.
 # GSL = "*"
-# num-complex = "*"
-# oxifft = "*" # rust implementation of fftw. 
+# num-complex = "*" 
 # faer = "*" # 2D linear algebra with no BLAS/LAPACK calling.
 pyo3 = { version = "0.29" }
 
