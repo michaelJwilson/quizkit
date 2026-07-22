@@ -29,7 +29,7 @@ pub fn fft_image_r2c(image: &ArrayD<f64>) -> ArrayD<f64> {
     ).unwrap();
 
     // in is consumed in favour of out.
-    plan.execute();
+    plan.r2c(&mut in_buf, &mut out_buf).expect("FFT execution failed");
 
     let out_cols = cols / 2 + 1;
     let mut magnitude_array = ndarray::Array2::<f64>::zeros((rows, out_cols));
@@ -40,6 +40,8 @@ pub fn fft_image_r2c(image: &ArrayD<f64>) -> ArrayD<f64> {
             magnitude_array[[i, j]] = out_buf[idx].norm();
         }
     }
+
+    println!("Successful r2c.");
 
     magnitude_array.into_dyn()
 }
