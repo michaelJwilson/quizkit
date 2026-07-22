@@ -45,7 +45,8 @@ def main():
     image = get_galsim_image()
 
     # TODO mkdir etc.
-    # write_hdf5("./results/data/test_image.hdf5", image, "test_group", "test_data")
+    write_hdf5("./results/data/test_image.hdf5", image, "test_group", "test_data")
+    
     plot_image("./results/plots/test_image.pdf", image)
 
     logger.info("Done.")
