@@ -10,7 +10,7 @@ pub fn nb<'py>(
     ink: PyReadonlyArrayDyn<'py, f64>,
     inn: PyReadonlyArrayDyn<'py, f64>,
     inp: PyReadonlyArrayDyn<'py, f64>,
-) -> Bound<'py, PyArrayDyn<f64>> {    
+) -> Bound<'py, PyArrayDyn<f64>> {
     let k = ink.as_array();
     let n = inn.as_array();
     let p = inp.as_array();

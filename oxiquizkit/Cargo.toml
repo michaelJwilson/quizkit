@@ -12,6 +12,7 @@ extension-module = ["pyo3/extension-module"]
 default = []
 
 [dependencies]
+tempfile = "3.8"
 libm = "*"
 serde = {version = "*", features = ["derive"]}
 serde_json = "*"

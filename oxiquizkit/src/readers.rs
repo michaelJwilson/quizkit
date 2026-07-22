@@ -1,20 +1,12 @@
+use fitsio::FitsFile;
 use ndarray::ArrayD;
-use fitsio::File;
 
 pub fn read_hdf5(filepath: &str, dataset_name: &str) -> hdf5::Result<ArrayD<f64>> {
     let file = hdf5::File::open(filepath)?;
     let dataset = file.dataset(dataset_name)?;
     let array = dataset.read_dyn::<f64>()?;
-    
+
     Ok(array)
-}
-
-pub fn read_fits(filepath: &str) -> fitsio::errors::Result<ArrayD<f64>> {
-    let mut f = File::open(filepath)?;
-    let hdu = f.primary_hdu()?;
-    let data: ndarray::ArrayD<f64> = hdu.read_image(&mut f)?;
-
-    Ok(data)
 }
 
 #[cfg(test)]
@@ -32,7 +24,7 @@ mod tests {
             let file = hdf5::File::create(filepath)?;
             let group = file.create_group("test_group")?;
             let data = array![[1.0, 1.5], [2.0, 2.5]].into_dyn();
-            
+
             let builder = group.new_dataset::<f64>();
             let dataset = builder.create(dataset_name, data.shape())?;
             dataset.write(&data)?;

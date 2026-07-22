@@ -17,9 +17,7 @@ fn ln_factorial(x: u32, cache: &[f64]) -> f64 {
 }
 
 fn init_cache() -> &'static [f64] {
-    LN_FACT_CACHE.get_or_init(|| {
-        (0..CACHE_SIZE).map(|i| lgamma(i as f64 + 1.0)).collect()
-    })
+    LN_FACT_CACHE.get_or_init(|| (0..CACHE_SIZE).map(|i| lgamma(i as f64 + 1.0)).collect())
 }
 
 pub fn nb(

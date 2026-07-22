@@ -1,5 +1,7 @@
 use pyo3::prelude::*;
 
+mod readers;
+
 pub mod core;
 pub mod python;
 
