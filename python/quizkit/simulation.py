@@ -1,26 +1,28 @@
 import galsim
 
 
-def get_galsim_image():
+def get_galsim_image(
+    image_size=128, grid_dimensions=(8, 8), source_spacing_pixels=16, counts_per_source=2_500, psf_sigma=1.0
+):
+    # DEPRECATE
     pixel_scale = 0.2  # arcsec / pixel
-    image_size = 128
 
     image = galsim.ImageF(image_size, image_size, scale=pixel_scale)
-    psf = galsim.Airy(lam=532.0, diam=1.5, scale_unit=galsim.arcsec)
+    psf = galsim.Gaussian(sigma=psf_sigma)
 
-    grid_spacing = 15.0  # pixels
-    flux_per_source = 2_500  # photons
+    # TODO ... 
+    nx, ny = grid_dimensions
+    
+    start_x = -(nx - 1) / 2.0 * source_spacing_pixels
+    start_y = -(ny - 1) / 2.0 * source_spacing_pixels
 
-    grid_size = 5
-    offset_start = -(grid_size - 1) / 2.0 * grid_spacing
+    source = galsim.DeltaFunction(flux=counts_per_source)
+    csource = galsim.Convolve([source, psf])
 
-    for i in range(grid_size):
-        for j in range(grid_size):
-            x_offset = offset_start + i * grid_spacing
-            y_offset = offset_start + j * grid_spacing
-
-            source = galsim.DeltaFunction(flux=flux_per_source)
-            csource = galsim.Convolve([source, psf])
+    for i in range(nx):
+        for j in range(ny):
+            x_offset = start_x + i * source_spacing_pixels
+            y_offset = start_y + j * source_spacing_pixels
 
             csource.drawImage(
                 image=image, offset=(x_offset, y_offset), add_to_image=True

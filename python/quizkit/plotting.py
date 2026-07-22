@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 
 
-
 def plot_image(filepath, data):
     fig, ax = plt.subplots(figsize=(6, 6))
     cax = ax.imshow(data, cmap="inferno", origin="lower")
