@@ -16,7 +16,7 @@ fn ln_factorial(x: u32, cache: &[f64]) -> f64 {
     }
 }
 
-fn init_cache() -> &'static [f64] {
+fn init_lgamma_cache() -> &'static [f64] {
     LN_FACT_CACHE.get_or_init(|| (0..CACHE_SIZE).map(|i| lgamma(i as f64 + 1.0)).collect())
 }
 
@@ -26,7 +26,7 @@ pub fn nb(
     n: &ArrayViewD<'_, f64>,
     p: &ArrayViewD<'_, f64>,
 ) {
-    let cache = init_cache();
+    let cache = init_lgamma_cache();
 
     Zip::from(r)
         .and(k)
