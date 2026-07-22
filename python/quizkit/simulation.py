@@ -1,8 +1,9 @@
+import random
 import galsim
 
 
 def get_galsim_image(
-    image_size=128, grid_dimensions=(8, 8), source_spacing_pixels=16, counts_per_source=2_500, psf_sigma=1.0
+    image_size=128, grid_dimensions=(8, 8), source_spacing_pixels=16, counts_per_source=2_500, psf_sigma=1.0, dropout_rate=0.25,
 ):
     # DEPRECATE
     pixel_scale = 0.2  # arcsec / pixel
@@ -21,6 +22,9 @@ def get_galsim_image(
 
     for i in range(nx):
         for j in range(ny):
+            if random.random() < dropout_rate:
+                continue
+
             x_offset = start_x + i * source_spacing_pixels
             y_offset = start_y + j * source_spacing_pixels
 
