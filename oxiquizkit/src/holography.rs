@@ -38,17 +38,26 @@ impl HolographyEngine {
         HolographyEngine { rows, cols, inb, outb, forward_plan, backward_plan }
     }
 
-    fn initialize_random_phase(buf: &mut [Complex64], illumination: &Array2<f64>) {
+    fn generate_uniforms(n: usize) -> AlignedVec<f64> {
         let mut rng = rand::thread_rng();
+        let mut phases = AlignedVec::<f64>::new(n);
+
+        for p in phases.iter_mut() {
+            let raw_u32 = rng.gen::<u32>(); 
+            *p = (raw_u32 as f64);
+        }
+
+        phases 
+    }
+
+    pub fn initialize_random_phase(buf: &mut [Complex64], illumination: &Array2<f64>) {
         let ill_slice = illumination.as_slice().unwrap();
+        let uniforms = Self::generate_uniforms(buf.len());
 
         const TO_RAD: f64 = (2.0 * std::f64::consts::PI) / (u32::MAX as f64 + 1.0);
 
-        for (c, &amp) in buf.iter_mut().zip(ill_slice.iter()) {
-            let raw_u32 = rng.gen::<u32>(); 
-            let phase = (raw_u32 as f64) * TO_RAD;
-    
-            *c = Complex64::from_polar(amp, phase);
+        for ((c, &amp), &phase) in buf.iter_mut().zip(ill_slice.iter()).zip(uniforms.iter()) {
+            *c = Complex64::from_polar(amp, TO_RAD * phase);
         }
     }
     
@@ -62,18 +71,19 @@ impl HolographyEngine {
         let progress = iter as f64 / max_iters as f64;
         let progress_complement = 1.0 - progress;
 
-        let mut rng = rand::thread_rng();
-        let rand_val: f64 = rng.gen();
-        let t = progress + rand_val * progress_complement;
+        let uniforms = Self::generate_uniforms(complex_buf.len());
 
         complex_buf.par_iter_mut()
             .zip(target_amplitude.par_iter())
-            .for_each(|(c, &target_amp)| {
+            .zip(uniforms.par_iter())
+            .for_each(|((c, &target_amp), &rand_val)| {
                 let norm = c.norm().max(EPSILON);
                 let safe_target = target_amp.max(EPSILON);
 
                 let log_norm = norm.ln();
                 let log_target = safe_target.ln();
+
+                let t = progress + rand_val * progress_complement;
                 let target_amplitude = (log_norm + t * (log_target - log_norm)).exp();
 
                 let scale = target_amplitude / norm;
@@ -103,6 +113,9 @@ impl HolographyEngine {
 
             Self::constrain_amplitude(&mut self.inb, slm_ill_slice, iter, max_iters);
         }
+
+        // NB calculate final image plane
+        self.forward_plan.c2c(&mut self.inb, &mut self.outb).unwrap();
 
         for c in self.inb.iter_mut() {
             *c = (c.arg() + std::f64::consts::PI).into();
