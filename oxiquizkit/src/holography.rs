@@ -3,6 +3,7 @@ use fftw::types::*;
 use fftw::array::AlignedVec;
 use num_complex::Complex64;
 use ndarray::Array2;
+use rayon::prelude::*;
 use rand::Rng;
 
 pub struct HolographyEngine {
@@ -53,32 +54,33 @@ impl HolographyEngine {
     
     fn constrain_amplitude(
         complex_buf: &mut [Complex64], 
-        target_amp_slice: &[f64], 
+        target_amplitude: &[f64],
         iter: usize, 
         max_iters: usize
     ) {
         const EPSILON: f64 = 1e-15;
         let progress = iter as f64 / max_iters as f64;
+        let progress_complement = 1.0 - progress;
+
         let mut rng = rand::thread_rng();
+        let rand_val: f64 = rng.gen();
+        let t = progress + rand_val * progress_complement;
 
-        for (c, &target_amp) in complex_buf.iter_mut().zip(target_amp_slice.iter()) {
-            let norm = c.norm();
-            
-            let safe_norm = if norm < EPSILON { EPSILON } else { norm };
-            let safe_target = if target_amp < EPSILON { EPSILON } else { target_amp };
+        complex_buf.par_iter_mut()
+            .zip(target_amplitude.par_iter())
+            .for_each(|(c, &target_amp)| {
+                let norm = c.norm().max(EPSILON);
+                let safe_target = target_amp.max(EPSILON);
 
-            let rand_val: f64 = rng.gen();
-            let t = progress + (1.0 - progress) * rand_val;
+                let log_norm = norm.ln();
+                let log_target = safe_target.ln();
+                let target_amplitude = (log_norm + t * (log_target - log_norm)).exp();
 
-            let log_norm = safe_norm.ln();
-            let log_target = safe_target.ln();
-            let new_log_amplitude = log_norm + t * (log_target - log_norm);
+                let scale = target_amplitude / norm;
 
-            let scale = new_log_amplitude.exp() / safe_norm;
-
-            c.re *= scale;
-            c.im *= scale;
-        }
+                c.re *= scale;
+                c.im *= scale;
+            });
     }
 
     pub fn gerchberg_saxton_slm_phase(
