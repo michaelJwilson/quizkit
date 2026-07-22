@@ -1,5 +1,6 @@
 use oxiquizkit::readers::read_hdf5;
-use oxiquizkit::fourier::fft_image_r2c;
+use oxiquizkit::holography::HolographyEngine;
+use ndarray::Array2;
 use std::env;
 use std::path::PathBuf;
 use std::process;
@@ -27,5 +28,23 @@ fn main() {
     let hdf5_path = &args[1];
     let image = process_image(hdf5_path);
 
-    let fft_result = fft_image_r2c(&image);
+    let target_amplitude: Array2<f64> = image
+        .into_dimensionality::<ndarray::Ix2>()
+        .expect("Must be able to convert image to 2D for holography.");
+        
+    let shape = target_amplitude.shape();
+    let rows = shape[0];
+    let cols = shape[1];
+
+    let slm_illumination = Array2::<f64>::from_elem((rows, cols), 1.0);
+
+    let mut holography_engine = HolographyEngine::new(rows, cols);
+
+    let iterations = 25;
+
+    let slm_phase = holography_engine.gerchberg_saxton_slm_phase(
+        &target_amplitude, 
+        &slm_illumination, 
+        iterations
+    );
 }

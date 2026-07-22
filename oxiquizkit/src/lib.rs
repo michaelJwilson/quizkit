@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
 pub mod readers;
-pub mod	fourier;
+pub mod	holography;
 pub mod core;
 pub mod python;
 
