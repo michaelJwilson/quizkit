@@ -2,7 +2,7 @@ use ndarray::ArrayD;
 use numpy::{IntoPyArray, PyArrayDyn, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
 
-use crate::core; // Import your pure Rust logic
+use crate::core;
 
 #[pyfunction]
 pub fn nb<'py>(
