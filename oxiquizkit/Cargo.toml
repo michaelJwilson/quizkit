@@ -13,19 +13,19 @@ default = []
 
 [dependencies]
 libm = "*"
+serde = {version = "*", features = ["derive"]}
+serde_json = "*"
 rayon = "*" # threading
-numpy = { version = "*" }
-pyo3 = { version = "*" }
+numpy = { version = "0.29" }
 ndarray = {version = "*", features = ["rayon"] } # multi-slice arrays, broadcastring; no linear algebra.
 itertools = "*"
 rand = "*"
-nalgebra = "*" # spatial transformations, rotation, etc.
-serde = {version = "*", features = ["derive"]}
-serde_json = "*"
-GSL = "*"
-num-complex = "*"
-oxifft = "*" # rust implementation of fftw. 
+# nalgebra = "*" # spatial transformations, rotation, etc.
+# GSL = "*"
+# num-complex = "*"
+# oxifft = "*" # rust implementation of fftw. 
 # faer = "*" # 2D linear algebra with no BLAS/LAPACK calling.
+pyo3 = { version = "0.29" }
 
 [dev-dependencies]
 approx = ">0.4"

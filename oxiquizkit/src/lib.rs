@@ -4,27 +4,27 @@ use numpy::{
 };
 use pyo3::prelude::*;
 
+#[pyfunction]
+fn nb<'py>(
+    py: Python<'py>,
+    ink: PyReadonlyArrayDyn<'py, f64>,
+    inn: PyReadonlyArrayDyn<'py, f64>,
+    inp: PyReadonlyArrayDyn<'py, f64>,
+) -> Bound<'py, PyArrayDyn<f64>> {    
+    let k = ink.as_array();
+    let n = inn.as_array();
+    let p = inp.as_array();
+
+    let mut result = ArrayD::<f64>::zeros(k.raw_dim());
+
+    core::nb(&mut result, &k, &n, &p);
+
+    result.into_pyarray(py)
+}
+
 #[pymodule]
-fn oxiquizkit(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    #[pyfn(m)]
-    fn nb<'py>(
-        py: Python<'py>,
-        ink: PyReadonlyArrayDyn<'py, f64>,
-        inn: PyReadonlyArrayDyn<'py, f64>,
-        inp: PyReadonlyArrayDyn<'py, f64>,
-    ) -> &'py PyArrayDyn<f64> {
-        let k = ink.as_array();
-        let n = inn.as_array();
-        let p = inp.as_array();
-
-        // NB k.raw_dim() returns the .shape of the array.
-        let mut result = ArrayD::<f64>::zeros(k.raw_dim());
-
-        core::nb(&mut result, &k, &n, &p);
-
-        result.into_pyarray(py)
-    }
-
+fn oxiquizkit(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(nb, m)?)?;
     Ok(())
 }
 
