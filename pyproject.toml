@@ -22,6 +22,7 @@ dependencies = [
     "quizkit",
     "rustworkx",
     "galsim==2.8.4",
+    "h5py",
 ]
 
 [project.optional-dependencies]
