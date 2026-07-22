@@ -6,5 +6,6 @@ pub fn benchmark_fibonacci(c: &mut Criterion) {
     c.bench_function("fib(20)", |b| b.iter(|| fibonacci_fast(black_box(20))));
 }
 
+// NB cargo bench -- --fail-fast 
 criterion_group!(benches, benchmark_fibonacci);
 criterion_main!(benches);
