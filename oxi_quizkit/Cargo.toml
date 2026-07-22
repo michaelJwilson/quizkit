@@ -27,6 +27,10 @@ oxifft = "*" # rust implementation of fftw.
 approx = ">0.4"
 criterion = ">0.4"
 
+# NB "target-cpu=arm64"; "target-cpu=native".
+[build]
+rustflags = ["-C", "target-cpu=arm64"]
+
 [profile.release]
 # codegen-units = 1
 opt-level = 3
