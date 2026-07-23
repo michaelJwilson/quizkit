@@ -1,4 +1,5 @@
 use oxiquizkit::readers::read_hdf5;
+use oxiquizkit::writers::write_hologram;
 use oxiquizkit::holography::HolographyEngine;
 use ndarray::Array2;
 use std::env;
@@ -39,11 +40,18 @@ fn main() {
 
     let mut holography_engine = HolographyEngine::new(rows, cols);
 
-    let iterations = 25;
+    let iterations = 50;
 
-    let _slm_phase = holography_engine.gerchberg_saxton_slm_phase(
+    let slm_phase = holography_engine.gerchberg_saxton_slm_phase(
         &target_amplitude, 
         &slm_illumination, 
         iterations
     );
+    
+    write_hologram(
+        "../results/hologram.h5", 
+        slm_phase.view(), 
+        slm_illumination.view(), 
+        target_amplitude.view()
+    ).expect("Failed to write HDF5 data");
 }

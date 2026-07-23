@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 
 pub mod readers;
+pub mod writers;
 pub mod	holography;
 pub mod core;
 pub mod python;

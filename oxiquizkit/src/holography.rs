@@ -74,23 +74,26 @@ impl HolographyEngine {
         let uniforms = Self::generate_uniforms(complex_buf.len());
 
         complex_buf.par_iter_mut()
-            .zip(target_amplitude.par_iter())
-            .zip(uniforms.par_iter())
-            .for_each(|((c, &target_amp), &rand_val)| {
-                let norm = c.norm().max(EPSILON);
-                let safe_target = target_amp.max(EPSILON);
+        .zip(target_amplitude.par_iter())
+        .for_each_init(
+        || rand::thread_rng(),
+        |rng, (c, &target_amp)| {
+            let rand_val: f64 = rng.gen();
 
-                let log_norm = norm.ln();
-                let log_target = safe_target.ln();
+            let norm = c.norm().max(EPSILON);
+            let safe_target = target_amp.max(EPSILON);
 
-                let t = progress + rand_val * progress_complement;
-                let target_amplitude = (log_norm + t * (log_target - log_norm)).exp();
+            let log_norm = norm.ln();
+            let log_target = safe_target.ln();
 
-                let scale = target_amplitude / norm;
+            let t = progress + rand_val * progress_complement;
+            let target_amplitude = (log_norm + t * (log_target - log_norm)).exp();
 
-                c.re *= scale;
-                c.im *= scale;
-            });
+            let scale = target_amplitude / norm;
+            c.re *= scale;
+            c.im *= scale;
+        }
+    );
     }
 
     pub fn gerchberg_saxton_slm_phase(
@@ -98,7 +101,7 @@ impl HolographyEngine {
         target_amplitude: &Array2<f64>, 
         slm_illumination: &Array2<f64>, 
         max_iters: usize
-    ) {
+    ) -> Array2<f64> {
         let target_amp_slice = target_amplitude.as_slice().unwrap();
         let slm_ill_slice = slm_illumination.as_slice().unwrap();
 
@@ -117,8 +120,14 @@ impl HolographyEngine {
         // NB calculate final image plane
         self.forward_plan.c2c(&mut self.inb, &mut self.outb).unwrap();
 
-        for c in self.inb.iter_mut() {
-            *c = (c.arg() + std::f64::consts::PI).into();
-        }
+        let phase_vec: Vec<f64> = self.outb.iter()
+        .map(|c| c.arg() + std::f64::consts::PI)
+        .collect();
+
+        println!("Successful phase extraction with Gerchberg-Saxton.");
+
+        // Reshape into an ndarray and return
+        Array2::from_shape_vec((self.rows, self.cols), phase_vec)
+            .expect("Shape mismatch during phase extraction")
     }
 }
