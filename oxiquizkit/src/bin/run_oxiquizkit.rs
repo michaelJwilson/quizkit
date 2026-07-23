@@ -48,7 +48,7 @@ fn main() {
     );
 
     write_hologram(
-        "../results/hologram.h5",
+        "../results/data/hologram.h5",
         slm_phase.view(),
         slm_illumination.view(),
         target_amplitude.view(),
