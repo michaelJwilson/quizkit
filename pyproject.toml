@@ -16,7 +16,7 @@ dependencies = [
     "polars>=1.30.0",
     "pyyaml>=6.0",
     "pyarrow==24.0.0",
-    "torch==2.12.1",
+    "torch==2.13.0",
     "pydantic==2.13.4",
     "maturin>=1.8.3",
     "quizkit",
