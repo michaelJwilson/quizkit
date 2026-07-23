@@ -89,10 +89,10 @@ def plot_holography(phi, source_lattice, sampled_lattice, inferred_lattice):
     fig, axs = plt.subplots(2, 2, figsize=(10, 10), constrained_layout=True)
     
     panels = [
-        (axs[0, 0], phi, r'Phase', 'twilight', 0, 2*np.pi),
-        (axs[0, 1], source_lattice, 'Source', 'magma', None, None),
-        (axs[1, 0], sampled_lattice, 'Sampled', 'magma', None, None),
-        (axs[1, 1], inferred_lattice, 'Inferred', 'magma', None, None),
+        (axs[0, 0], source_lattice, 'Source', 'magma', None, None),
+        (axs[0, 1], sampled_lattice, 'Sampled', 'magma', None, None),
+        (axs[1, 0], phi, r'Inferred Phase', 'twilight', 0, 2*np.pi),
+        (axs[1, 1], inferred_lattice, 'Inferred lattice', 'magma', None, None),
     ]
     
     for ax, data, title, cmap, vmin, vmax in panels:
