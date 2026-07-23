@@ -21,11 +21,18 @@ def get_reciprocal_lattice(N, basis_vectors):
 def forward(phi, amplitude_k, otf, background):
     u_k = amplitude_k * jnp.exp(1j * phi)
     
-    U_r = jnp.fft.fft2(u_k, norm="ortho")
+    # Center the optical axis before/after FFT
+    u_k_shifted = jnp.fft.ifftshift(u_k)
+    U_r_unshifted = jnp.fft.fft2(u_k_shifted, norm="ortho")
+    U_r = jnp.fft.fftshift(U_r_unshifted)
+    
     I_r = jnp.abs(U_r)**2
     
-    I_fourier = jnp.fft.fft2(I_r, norm="ortho")
-    mu_r = jnp.real(jnp.fft.ifft2(I_fourier * otf, norm="ortho")) + background
+    # Shift back for OTF convolution
+    I_r_shifted = jnp.fft.ifftshift(I_r)
+    I_fourier = jnp.fft.fft2(I_r_shifted, norm="ortho")
+    mu_r_unshifted = jnp.fft.ifft2(I_fourier * otf, norm="ortho")
+    mu_r = jnp.real(jnp.fft.fftshift(mu_r_unshifted)) + background
     
     return jnp.clip(mu_r, a_min=1e-6)
 

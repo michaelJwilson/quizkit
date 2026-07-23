@@ -17,7 +17,8 @@ def trap_data(psf):
     N = 64
     key = jax.random.PRNGKey(42)
     
-    spacing = 10
+    # CHANGED: spacing to 8 so N/spacing is an exact integer (64/8 = 8)
+    spacing = 8 
     start = (N - 3 * spacing) // 2
     origin = jnp.array([start, start])
     
@@ -103,6 +104,8 @@ def test_holography(trap_data):
     inferred_lattice = forward(
         phi_full, trap_data['amplitude_k'], otf, trap_data['background']
     )
+
+    inferred_masked = inferred_lattice * trap_data['mask']
     
     source_lattice = 5_000.0 * trap_data['mask']
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
@@ -114,7 +117,7 @@ def test_holography(trap_data):
         phi=phi_plot, 
         source_lattice=convolved_lattice, 
         sampled_lattice=trap_data['target_image'], 
-        inferred_lattice=inferred_lattice
+        inferred_lattice=inferred_masked  # Pass the masked version
     )
     
     fig.savefig('./holography.pdf', dpi=300, bbox_inches='tight')
