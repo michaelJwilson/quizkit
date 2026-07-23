@@ -23,6 +23,7 @@ dependencies = [
     "rustworkx",
     "galsim==2.8.4",
     "h5py",
+    "jax",
 ]
 
 [project.optional-dependencies]
