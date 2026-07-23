@@ -48,7 +48,7 @@ fn main() {
     );
 
     write_hologram(
-        "../results/data/hologram.h5",
+        "../results/data/trap_gerchberg_saxton.h5",
         slm_phase.view(),
         slm_illumination.view(),
         target_amplitude.view(),
