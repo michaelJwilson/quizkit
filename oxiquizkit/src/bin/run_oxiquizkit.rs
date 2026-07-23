@@ -7,7 +7,8 @@ use std::process;
 
 fn process_image(hdf5_str: &str) -> ndarray::ArrayD<f64> {
     // TODO
-    let internal_path = "test_group/test_data";
+    // let internal_path = "test_group/test_data";
+    let internal_path = "test_image";    
     let data_array = read_hdf5(hdf5_str, internal_path).expect("Failed to read HDF5 file");
 
     println!("Successful load of {}", hdf5_str);

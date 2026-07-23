@@ -242,11 +242,12 @@ def write_trap_data_to_hdf5(filepath, trap_data):
 def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensity):
     with h5py.File(filepath, "w") as f:
         f.create_dataset("slm_phases", data=np.array(final_phi))
+        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
+
         f.create_dataset("inferred_lattice", data=np.array(final_inferred_intensity))
 
         f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
         f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
-        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
 
 
 def plot_holography(hdf5_path):
