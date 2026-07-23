@@ -161,14 +161,14 @@ def create_model_stepper(
     target_image,
     N,
     lambda_uniformity=1.0,
-    lambda_sym=0.0,
+    lambda_sym=1.e2,
     min_sigma=0.9,
 ):
     y, x = jnp.ogrid[-N // 2 : N // 2, -N // 2 : N // 2]
     k2 = x**2 + y**2
 
     # TODO
-    max_k2 = jnp.percentile(k2, 50)
+    max_k2 = jnp.percentile(k2, 90)
 
     low_k_mask = (k2 <= max_k2).astype(jnp.float32)
 
@@ -284,7 +284,7 @@ def plot_holography(hdf5_path):
     plt.tight_layout()
     return fig, axs
 
-
+# TODO
 def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
     true_sigma = data["psf_sigma"]
     sigma_err = abs(final_sigma - true_sigma) / true_sigma
@@ -404,7 +404,7 @@ def main():
     stepper = create_model_stepper(
         optimizer,
         data["amplitude_k"],
-        data["target_image"],
+        data["perimeter_mask"], # HACK data["target_image"],
         N,
         min_sigma=min_sigma,
     )
