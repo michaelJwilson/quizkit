@@ -59,7 +59,7 @@ def create_model_stepper(optimizer, amplitude_k, psf, target_image, mask, N, bac
         # NB fractional variance regularization.
         log_mu_traps = jnp.log(mu_traps)
 
-        uniformity_regularization = 1e3 * jnp.var(log_mu_traps)
+        uniformity_regularization = 1e4 * jnp.var(log_mu_traps)
         
         return jnp.sum(mask_weights * loss) + uniformity_regularization
     
