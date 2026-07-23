@@ -2,7 +2,8 @@ import pytest
 import jax
 import jax.numpy as jnp
 import optax
-from quizkit.holography import forward, create_model_stepper, plot_holography
+import itertools
+from quizkit.holography import forward, create_model_stepper, get_reciprocal_lattice, plot_holography
 
 @pytest.fixture
 def psf(N=64, sigma=1.5):
@@ -16,17 +17,24 @@ def trap_data(psf):
     N = 64
     key = jax.random.PRNGKey(42)
     
-    # Generate mask (16 traps)
-    mask = jnp.zeros((N, N))
     spacing = 10
     start = (N - 3 * spacing) // 2
-    for i in range(4):
-        for j in range(4):
-            mask = mask.at[start + i*spacing, start + j*spacing].set(1.0)
+    origin = jnp.array([start, start])
+    
+    basis_vectors = jnp.array([
+        [spacing, 0], 
+        [0, spacing]
+    ])
+    
+    trap_indices = list(itertools.product(range(4), range(4)))
+    
+    mask = jnp.zeros((N, N))
+    for (i, j) in trap_indices:
+        pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
+        mask = mask.at[pos[0], pos[1]].set(1.0)
             
     source_lattice = 5_000.0 * mask
     
-    # PSF convolution setup
     otf = jnp.fft.fft2(jnp.fft.ifftshift(psf), norm="ortho")
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
     convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho"))
@@ -41,49 +49,69 @@ def trap_data(psf):
         'psf': psf,
         'target_image': sampled_lattice,
         'mask': mask,
-        'background': background
+        'background': background,
+        'lattice_geometry': {
+            'origin': origin,
+            'basis_vectors': basis_vectors,
+            'trap_indices': trap_indices
+        }
     }
 
 # NB pytest -s tests/test_holography.py::test_holography
 def test_holography(trap_data):
-    learning_rate = 1e-2
+    learning_rate = 1e-1
     optimizer = optax.adam(learning_rate=learning_rate)
     
+    # 1. Added missing 'N' argument
     stepper = create_model_stepper(
         optimizer=optimizer,
         amplitude_k=trap_data['amplitude_k'],
         psf=trap_data['psf'],
         target_image=trap_data['target_image'],
         mask=trap_data['mask'],
+        N=trap_data['N'],
         background=trap_data['background']
     )
 
     key = jax.random.PRNGKey(42)
-    phi = jax.random.uniform(key, (trap_data['N'], trap_data['N']), minval=0, maxval=2*jnp.pi)
-    
-    opt_state = optimizer.init(phi)
-    
-    # Notice `optimizer` is no longer passed on every step
-    _, _, initial_loss = stepper(phi, opt_state)
-    
-    for _ in range(50):
-        phi, opt_state, loss = stepper(phi, opt_state)
+
+    B, bz_shape = get_reciprocal_lattice(
+        trap_data['N'], 
+        trap_data['lattice_geometry']['basis_vectors']
+    )
+
+    phi_bz = jax.random.uniform(key, bz_shape, minval=-jnp.pi, maxval=jnp.pi)
+    opt_state = optimizer.init(phi_bz)
+
+    # 2. Corrected variable names to phi_bz
+    _, _, initial_loss = stepper(phi_bz, opt_state)
+
+    for _ in range(100):
+        phi_bz, opt_state, loss = stepper(phi_bz, opt_state)
         
     assert loss < initial_loss, f"Loss failed to decrease. Init: {initial_loss:.2f}, Final: {loss:.2f}"
-    assert jnp.all(jnp.isfinite(phi)), "Phase array contains NaNs."
+    assert jnp.all(jnp.isfinite(phi_bz)), "Phase array contains NaNs."
+
 
     otf = jnp.fft.fft2(jnp.fft.ifftshift(trap_data['psf']), norm="ortho")
     
+    bz_h, bz_w = phi_bz.shape
+    reps_h = (trap_data['N'] + bz_h - 1) // bz_h
+    reps_w = (trap_data['N'] + bz_w - 1) // bz_w
+    phi_full = jnp.tile(phi_bz, (reps_h, reps_w))[:trap_data['N'], :trap_data['N']]
+    
     inferred_lattice = forward(
-        phi, trap_data['amplitude_k'], otf, trap_data['background']
+        phi_full, trap_data['amplitude_k'], otf, trap_data['background']
     )
     
     source_lattice = 5_000.0 * trap_data['mask']
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
     convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho")) + trap_data['background']
 
+    phi_plot = jnp.mod(phi_full, 2 * jnp.pi)
+
     fig, _ = plot_holography(
-        phi=phi, 
+        phi=phi_plot, 
         source_lattice=convolved_lattice, 
         sampled_lattice=trap_data['target_image'], 
         inferred_lattice=inferred_lattice
