@@ -16,19 +16,21 @@ def psf(N=64, sigma=1.5):
 def trap_data(psf):
     N = 64
     key = jax.random.PRNGKey(42)
+    # Split the key so we have one for Poisson noise and one for dropout
     key, subkey = jax.random.split(key)
     
     spacing = 8 
-    start = (N - 7 * spacing) // 2
-    origin = jnp.array([start, start])
+    origin = jnp.array([0, 0])
     
     basis_vectors = jnp.array([
         [spacing, 0], 
         [0, spacing]
     ])
     
+    # 1. Full 8x8 grid
     trap_indices_full = list(itertools.product(range(8), range(8)))
     
+    # 2. Apply 20% dropout
     dropout = 0.2
     keep_mask = jax.random.bernoulli(subkey, p=1.0 - dropout, shape=(len(trap_indices_full),))
     trap_indices = [trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]]
@@ -96,7 +98,6 @@ def test_holography(trap_data):
         
     assert loss < initial_loss, f"Loss failed to decrease. Init: {initial_loss:.2f}, Final: {loss:.2f}"
     assert jnp.all(jnp.isfinite(phi_bz)), "Phase array contains NaNs."
-
 
     otf = jnp.fft.fft2(jnp.fft.ifftshift(trap_data['psf']), norm="ortho")
     

@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
 import optax
-
 import matplotlib.pyplot as plt
 import numpy as np
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def get_reciprocal_lattice(N, basis_vectors):
     A = np.array(basis_vectors, dtype=float)
@@ -98,6 +99,9 @@ def plot_holography(phi, source_lattice, sampled_lattice, inferred_lattice):
         ax.set_xticks([])
         ax.set_yticks([])
 
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.08)
+        
+        fig.colorbar(im, cax=cax)
         
     return fig, axs
