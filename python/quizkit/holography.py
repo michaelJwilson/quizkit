@@ -22,7 +22,7 @@ def trap_data(
     psf=None,
     dropout_rate=0.4,
     psf_sigma=1.5,
-    source_amplitude=5_000.0,
+    source_amplitude=5_000.0, # TODO conservation of energy for FFT, conditioned on N.
     background_rate=1.0,
 ):
     key = jax.random.PRNGKey(42)
@@ -78,13 +78,17 @@ def trap_data(
     expected_counts = convolved_lattice + background_rate
     sampled_lattice = jax.random.poisson(key, expected_counts).astype(jnp.float32)
 
+    total_target_power = source_amplitude * len(trap_indices)
+    required_amplitude = jnp.sqrt(total_target_power / (N * N))
+
+
     return {
         "N": N,
         "dropout_rate": dropout_rate,
         "psf_sigma": psf_sigma,
         "background_rate": background_rate,
         "source_amplitude": source_amplitude,
-        "amplitude_k": jnp.ones((N, N)),
+        "amplitude_k": required_amplitude * jnp.ones((N, N)),
         "psf": psf,
         "source_image": convolved_lattice,
         "target_image": sampled_lattice,
@@ -155,7 +159,7 @@ def create_model_stepper(
     k2 = x**2 + y**2
 
     # TODO
-    max_k2 = (N // 2) ** 2
+    max_k2 = jnp.percentile(k2, 50)
 
     low_k_mask = (k2 <= max_k2).astype(jnp.float32)
     
@@ -232,7 +236,7 @@ def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensi
         f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
 
 
-def plot_holography(hdf5_path, name):
+def plot_holography(hdf5_path):
     plt.rcParams.update(
         {
             "font.family": "serif",
@@ -267,9 +271,80 @@ def plot_holography(hdf5_path, name):
     plt.tight_layout()
     return fig, axs
 
+def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
+    true_sigma = data["psf_sigma"]
+    sigma_err = abs(final_sigma - true_sigma) / true_sigma
+    print(f"PSF Sigma:      True = {true_sigma:.3f} | Inferred = {final_sigma:.3f} | Error = {sigma_err:.2%}")
+    
+    true_bg = data["background_rate"]
+    bg_err = abs(final_background - true_bg) / true_bg
+    print(f"Background:     True = {true_bg:.3f} | Inferred = {final_background:.3f} | Error = {bg_err:.2%}")
+
+    origin = data["lattice_geometry"]["origin"]
+    basis_vectors = data["lattice_geometry"]["basis_vectors"]
+    
+    true_active_coords = data["lattice_geometry"]["trap_indices"]
+    all_coords = data["lattice_geometry"]["trap_indices_full"]
+    true_dropouts = [c for c in all_coords if c not in true_active_coords]
+
+    def sample_peaks(indices):
+        peaks = []
+        for i, j in indices:
+            x = int(origin[0] + i * basis_vectors[0][0] + j * basis_vectors[1][0])
+            y = int(origin[1] + i * basis_vectors[0][1] + j * basis_vectors[1][1])
+            peaks.append(inferred_intensity[x, y])
+        return np.array(peaks)
+
+    active_peaks = sample_peaks(true_active_coords)
+    dropout_peaks = sample_peaks(true_dropouts)
+    
+    mean_active = np.mean(active_peaks)
+    std_active = np.std(active_peaks)
+    fractional_precision = std_active / mean_active
+
+    print(f"Trap Precision: CV = {fractional_precision:.2%} (Lower is better)")
+
+    global_max = np.max(inferred_intensity)
+    threshold = 0.05 * global_max
+
+    tp = np.sum(active_peaks > threshold)
+    fn = np.sum(active_peaks <= threshold)
+    fp = np.sum(dropout_peaks > threshold)
+    tn = np.sum(dropout_peaks <= threshold)
+
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+    
+    worst_ghost_ratio = np.max(dropout_peaks) / mean_active if len(dropout_peaks) > 0 else 0.0
+
+    print(f"Dropout Logic:  Threshold set at 5% of global max ({threshold:.2f})")
+    print(f"                Sensitivity (TPR) = {sensitivity:.2%} ({tp}/{tp+fn} active traps recovered)")
+    print(f"                Specificity (TNR) = {specificity:.2%} ({tn}/{tn+fp} dropouts kept dark)")
+    print(f"                Worst Ghost Trap  = {worst_ghost_ratio:.2%} of mean active trap depth")
+
+    optical_signal = inferred_intensity - final_background
+    
+    source_img = data["source_image"]
+    useful_mask = source_img > (0.01 * np.max(source_img))
+    
+    total_power = np.sum(optical_signal)
+    useful_power = np.sum(optical_signal * useful_mask)
+    
+    diffraction_efficiency = useful_power / total_power if total_power > 0 else 0.0
+    print(f"Efficiency:     {diffraction_efficiency:.2%} of laser power routed to target traps")
+    
+    return {
+        "sigma_err": sigma_err,
+        "bg_err": bg_err,
+        "fractional_precision": fractional_precision,
+        "sensitivity": sensitivity,
+        "specificity": specificity,
+        "worst_ghost_ratio": worst_ghost_ratio,
+        "diffraction_efficiency": diffraction_efficiency
+    }
 
 def main():
-    mode = "full" # Options: "bz" or "full"
+    mode = "full"
     
     data = trap_data()
     N = data["N"]
@@ -313,16 +388,19 @@ def main():
     final_phi_full = tile_image(params['phi'], N)
     
     final_sigma = jnp.exp(params['log_sigma'])
+    final_background = jnp.exp(params['log_background'])
 
     # NB no background.
     final_inferred_intensity = forward(
         N, final_phi_full, data["amplitude_k"], final_sigma, 0.0
     )
 
+    metrics = evaluate_metrics(data, final_inferred_intensity, final_sigma, final_background)
+
     write_trap_data_to_hdf5("./results/data/trap_inputs.h5", data)
     write_results_to_hdf5("./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity)
 
-    fig, _ = plot_holography("./results/data/trap_results.h5", f"{mode.upper()}-descent phase")
+    fig, _ = plot_holography("./results/data/trap_results.h5")
     fig.savefig("./results/plots/holography.pdf", dpi=300, bbox_inches="tight")
 
 
