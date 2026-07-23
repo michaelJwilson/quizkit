@@ -1,11 +1,11 @@
 use pyo3::prelude::*;
 
+pub mod core;
+pub mod fibonacci;
+pub mod holography;
+pub mod python;
 pub mod readers;
 pub mod writers;
-pub mod	holography;
-pub mod core;
-pub mod python;
-pub mod fibonacci;
 
 #[pymodule]
 fn oxiquizkit(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -1,18 +1,17 @@
+use ndarray::Array2;
+use oxiquizkit::holography::HolographyEngine;
 use oxiquizkit::readers::read_hdf5;
 use oxiquizkit::writers::write_hologram;
-use oxiquizkit::holography::HolographyEngine;
-use ndarray::Array2;
 use std::env;
 use std::process;
 
 fn process_image(hdf5_str: &str) -> ndarray::ArrayD<f64> {
     // TODO
     let internal_path = "test_group/test_data";
-    let data_array = read_hdf5(hdf5_str, internal_path)
-        .expect("Failed to read HDF5 file");
-        
+    let data_array = read_hdf5(hdf5_str, internal_path).expect("Failed to read HDF5 file");
+
     println!("Successful load of {}", hdf5_str);
-    
+
     data_array
 }
 
@@ -31,7 +30,7 @@ fn main() {
     let target_amplitude: Array2<f64> = image
         .into_dimensionality::<ndarray::Ix2>()
         .expect("Must be able to convert image to 2D for holography.");
-        
+
     let shape = target_amplitude.shape();
     let rows = shape[0];
     let cols = shape[1];
@@ -43,15 +42,16 @@ fn main() {
     let iterations = 50;
 
     let slm_phase = holography_engine.gerchberg_saxton_slm_phase(
-        &target_amplitude, 
-        &slm_illumination, 
-        iterations
+        &target_amplitude,
+        &slm_illumination,
+        iterations,
     );
-    
+
     write_hologram(
-        "../results/hologram.h5", 
-        slm_phase.view(), 
-        slm_illumination.view(), 
-        target_amplitude.view()
-    ).expect("Failed to write HDF5 data");
+        "../results/hologram.h5",
+        slm_phase.view(),
+        slm_illumination.view(),
+        target_amplitude.view(),
+    )
+    .expect("Failed to write HDF5 data");
 }
