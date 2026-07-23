@@ -129,7 +129,7 @@ def create_model_stepper(
         # We calculate variance ONLY on the traps we inferred are active.
         mu_active = mu_r[active_trap_idx]
         log_mu_active = jnp.log(mu_active + 1e-8)
-        uniformity_reg = 1e5 * jnp.var(log_mu_active)
+        uniformity_reg = 7e4 * jnp.var(log_mu_active)
         
         return loss_nll + uniformity_reg
 
@@ -182,7 +182,7 @@ def plot_holography(hdf5_path, name):
         inferred = f['inferred_lattice'][:]
         
     fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    fig.suptitle(f"Phase Retrieval: {name}")
+    fig.suptitle(f"{name}")
     
     panels = [
         (axs[0, 0], source, 'Source', 'magma', None, None),
@@ -271,7 +271,7 @@ def main():
     write_results_to_hdf5(results_hdf5, data, final_phi_full, final_inferred_intensity)
 
     print("Generating plots...")
-    fig, axs = plot_holography(results_hdf5, "BZ-descent phase inference")
+    fig, axs = plot_holography(results_hdf5, "BZ-descent phase")
     
     plt.savefig("holography.pdf", dpi=300, bbox_inches='tight')
 
