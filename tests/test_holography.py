@@ -16,10 +16,11 @@ def psf(N=64, sigma=1.5):
 def trap_data(psf):
     N = 64
     key = jax.random.PRNGKey(42)
+    key, subkey = jax.random.split(key)
     
-    # CHANGED: spacing to 8 so N/spacing is an exact integer (64/8 = 8)
     spacing = 8 
-    start = (N - 3 * spacing) // 2
+    # An 8x8 grid spans 7 intervals. 7 * 8 = 56 pixels wide.
+    start = (N - 7 * spacing) // 2
     origin = jnp.array([start, start])
     
     basis_vectors = jnp.array([
@@ -27,7 +28,13 @@ def trap_data(psf):
         [0, spacing]
     ])
     
-    trap_indices = list(itertools.product(range(4), range(4)))
+    # 1. Generate full 8x8 grid
+    trap_indices_full = list(itertools.product(range(8), range(8)))
+    
+    # 2. Apply 20% dropout
+    dropout = 0.2
+    keep_mask = jax.random.bernoulli(subkey, p=1.0 - dropout, shape=(len(trap_indices_full),))
+    trap_indices = [trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]]
     
     mask = jnp.zeros((N, N))
     for (i, j) in trap_indices:
