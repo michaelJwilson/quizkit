@@ -206,14 +206,20 @@ def create_model_stepper(
     loss_and_grad_fn = jax.value_and_grad(nll)
 
     @jax.jit
-    def stepper(params, opt_state):
+    def stepper(params, opt_state, key):
         loss, grads = loss_and_grad_fn(params)
-        grads["phi"] = grads["phi"] * low_k_mask
-
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params_next = optax.apply_updates(params, updates)
-
-        params_next["phi"] = jnp.mod(params_next["phi"] + jnp.pi, 2 * jnp.pi) - jnp.pi
+        
+        mask_key, noise_key = jax.random.split(key)
+        
+        perturb_mask = jax.random.bernoulli(mask_key, p=0.1, shape=params_next['phi'].shape)
+        
+        jitter = jax.random.uniform(noise_key, shape=params_next['phi'].shape, 
+                                    minval=-0.25, maxval=0.25)
+        
+        params_next['phi'] = params_next['phi'] + (perturb_mask * jitter)
+        params_next['phi'] = jnp.mod(params_next['phi'] + jnp.pi, 2 * jnp.pi) - jnp.pi    
 
         return params_next, opt_state, loss
 
@@ -259,7 +265,6 @@ def plot_holography(hdf5_path):
         inferred = f["inferred_lattice"][:]
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    # fig.suptitle(f"{name}")
 
     panels = [
         (axs[0, 0], source, "source", "magma", None, None),
@@ -389,7 +394,9 @@ def main():
         "log_background": jnp.log(1.0),
     }
 
+    # optimizer = optax.sgd(learning_rate=0.1)
     optimizer = optax.adam(learning_rate=0.1)
+
     opt_state = optimizer.init(initial_params)
     params = initial_params
 
@@ -406,7 +413,7 @@ def main():
     print(f"Optimizing over {iterations} iterations in {mode} mode...")
 
     for i in range(iterations):
-        params, opt_state, loss = stepper(params, opt_state)
+        params, opt_state, loss = stepper(params, opt_state, key)
 
         if i % 100 == 0 or i == iterations - 1:
             print(f"Iteration {i:04d} | Loss: {loss:.4f}")
