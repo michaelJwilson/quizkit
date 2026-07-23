@@ -24,6 +24,7 @@ dependencies = [
     "galsim==2.8.4",
     "h5py",
     "jax",
+    "optax",
 ]
 
 [project.optional-dependencies]
