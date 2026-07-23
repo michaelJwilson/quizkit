@@ -119,7 +119,7 @@ def test_holography(trap_data):
     
     source_lattice = 5_000.0 * trap_data['mask']
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
-    convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho")) + trap_data['background']
+    convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho"))
 
     phi_plot = jnp.mod(phi_full, 2 * jnp.pi)
 
@@ -127,7 +127,7 @@ def test_holography(trap_data):
         phi=phi_plot, 
         source_lattice=convolved_lattice, 
         sampled_lattice=trap_data['target_image'], 
-        inferred_lattice=inferred_masked  # Pass the masked version
+        inferred_lattice=inferred_masked
     )
 
     # bbox_inches='tight'
