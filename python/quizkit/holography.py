@@ -45,21 +45,23 @@ def create_model_stepper(optimizer, amplitude_k, psf, target_image, mask, N, bac
     mask_weights = mask[trap_idx]
     
     def nll(phi_bz):
-        # 1. Tile the Brillouin Zone phase patch to cover the full N x N SLM
         bz_h, bz_w = phi_bz.shape
         reps_h = (N + bz_h - 1) // bz_h
         reps_w = (N + bz_w - 1) // bz_w
         
-        # Tile and crop exactly to N x N
         phi_full = jnp.tile(phi_bz, (reps_h, reps_w))[:N, :N]
         
-        # 2. Forward pass uses the full tiled array
         mu_r = forward(phi_full, amplitude_k, otf, background)        
         mu_traps = mu_r[trap_idx]
         
-        trap_loss = mu_traps - target_traps * jnp.log(mu_traps)
+        loss = mu_traps - target_traps * jnp.log(mu_traps)
+
+        # NB fractional variance regularization.
+        log_mu_traps = jnp.log(mu_traps)
+
+        uniformity_regularization = 1e3 * jnp.var(log_mu_traps)
         
-        return jnp.sum(mask_weights * trap_loss)
+        return jnp.sum(mask_weights * loss) + uniformity_regularization
     
     loss_and_grad_fn = jax.value_and_grad(nll)
     

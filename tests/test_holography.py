@@ -27,10 +27,8 @@ def trap_data(psf):
         [0, spacing]
     ])
     
-    # 1. Full 8x8 grid
     trap_indices_full = list(itertools.product(range(8), range(8)))
     
-    # 2. Apply 20% dropout
     dropout = 0.2
     keep_mask = jax.random.bernoulli(subkey, p=1.0 - dropout, shape=(len(trap_indices_full),))
     trap_indices = [trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]]
@@ -39,6 +37,12 @@ def trap_data(psf):
     for (i, j) in trap_indices:
         pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
         mask = mask.at[pos[0], pos[1]].set(1.0)
+        
+    # Build the full perimeter mask without dropout (all 8x8 indices)
+    perimeter_mask = jnp.zeros((N, N))
+    for (i, j) in trap_indices_full:
+        pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
+        perimeter_mask = perimeter_mask.at[pos[0], pos[1]].set(1.0)
             
     source_lattice = 5_000.0 * mask
     
@@ -56,11 +60,13 @@ def trap_data(psf):
         'psf': psf,
         'target_image': sampled_lattice,
         'mask': mask,
+        'perimeter_mask': perimeter_mask,
         'background': background,
         'lattice_geometry': {
             'origin': origin,
             'basis_vectors': basis_vectors,
-            'trap_indices': trap_indices
+            'trap_indices': trap_indices,
+            'trap_indices_full': trap_indices_full
         }
     }
 
@@ -90,7 +96,6 @@ def test_holography(trap_data):
     phi_bz = jax.random.uniform(key, bz_shape, minval=-jnp.pi, maxval=jnp.pi)
     opt_state = optimizer.init(phi_bz)
 
-    # 2. Corrected variable names to phi_bz
     _, _, initial_loss = stepper(phi_bz, opt_state)
 
     for _ in range(100):
@@ -110,7 +115,7 @@ def test_holography(trap_data):
         phi_full, trap_data['amplitude_k'], otf, trap_data['background']
     )
 
-    inferred_masked = inferred_lattice * trap_data['mask']
+    inferred_masked = inferred_lattice * trap_data['perimeter_mask']
     
     source_lattice = 5_000.0 * trap_data['mask']
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
@@ -124,5 +129,6 @@ def test_holography(trap_data):
         sampled_lattice=trap_data['target_image'], 
         inferred_lattice=inferred_masked  # Pass the masked version
     )
-    
-    fig.savefig('./holography.pdf', dpi=300, bbox_inches='tight')
+
+    # bbox_inches='tight'
+    fig.savefig('./holography.pdf', dpi=300)
