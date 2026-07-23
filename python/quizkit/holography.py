@@ -248,7 +248,7 @@ def plot_holography(hdf5_path, name):
         inferred = f["inferred_lattice"][:]
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    fig.suptitle(f"{name}")
+    # fig.suptitle(f"{name}")
 
     panels = [
         (axs[0, 0], source, "source", "magma", None, None),
