@@ -17,7 +17,6 @@ def get_psf(N, sigma=1.5):
     return psf
 
 
-# @pytest.fixture
 def trap_data(
     N=64,
     psf=None,
@@ -54,7 +53,6 @@ def trap_data(
         trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]
     ]
 
-    # NB with dropout
     mask = jnp.zeros((N, N))
     for i, j in trap_indices:
         pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
@@ -102,7 +100,6 @@ def trap_data(
 
 
 def get_reciprocal_lattice(N, basis_vectors):
-    # NB a_i . b_j = 2 pi delta_ij
     A = np.array(basis_vectors, dtype=float)
 
     A_inv = np.linalg.inv(A)
@@ -113,12 +110,13 @@ def get_reciprocal_lattice(N, basis_vectors):
         int(np.round(np.linalg.norm(B[1]))),
     )
 
-    # TODO
     return B, bz_shape
 
 def tile_image(image, N):
     h, w = image.shape
     
+    # NB: If h == N and w == N, reps evaluate to 1.
+    # No explicit branching is required for full-field vs BZ modes.
     reps_h = (N + h - 1) // h
     reps_w = (N + w - 1) // w
     
@@ -133,71 +131,78 @@ def forward(N, phi, amplitude_k, psf_sigma, background):
 
     u_k = amplitude_k * jnp.exp(1j * phi)
 
-    # TODO
-    # NB shifts required to have image-centered optical axis 
     u_k_shifted = jnp.fft.ifftshift(u_k)
     U_r_unshifted = jnp.fft.fft2(u_k_shifted, norm="ortho")
     U_r = jnp.fft.fftshift(U_r_unshifted)
 
-    # NB predicted intensity in the image plane
     I_r = jnp.abs(U_r) ** 2
 
-    # NB optical axis centering
     I_r_shifted = jnp.fft.ifftshift(I_r)
 
-    # NB convolved with camera psf ...
     I_fourier = jnp.fft.fft2(I_r_shifted, norm="ortho")
 
     mu_r_unshifted = jnp.fft.ifft2(I_fourier * otf, norm="ortho")
 
-    # NB add background
     mu_r = jnp.real(jnp.fft.fftshift(mu_r_unshifted))
 
     return background + jnp.clip(mu_r, a_min=1e-6)
 
 
 def create_model_stepper(
-    optimizer, amplitude_k, target_image, N, lambda_uniformity=0.
+    optimizer, amplitude_k, target_image, N, lambda_uniformity=1.e1, lambda_sym=0.0, 
 ):
+    y, x = jnp.ogrid[-N//2 : N//2, -N//2 : N//2]
+    k2 = x**2 + y**2
+
+    # TODO
+    max_k2 = (N // 2) ** 2
+
+    low_k_mask = (k2 <= max_k2).astype(jnp.float32)
+    
     def nll(params):
-        phi_bz = params['phi_bz']
+        phi = params['phi']
         psf_sigma = jnp.exp(params['log_sigma'])
         background = jnp.exp(params['log_background'])
-
-        # NB solves for negative log-likelihood with uniformity regularization,
-        #    given Brioullin zone phases. 
-        phi_full = tile_image(phi_bz, N)
+ 
+        phi_full = tile_image(phi, N)
      
         mu_r = forward(N, phi_full, amplitude_k, psf_sigma, background)
 
-        # NB phase matches the absence of an atom also.
         loss_nll = jnp.sum(mu_r - target_image * jnp.log(mu_r + 1e-8))
 
-        is_active = (mu_r > 5.e-2 * jnp.max(mu_r)).astype(jnp.float32)
-        n_active = jnp.sum(is_active) + 1e-8  # Prevent division by zero
+        is_active = (mu_r > 0.0).astype(jnp.float32)
+        n_active = jnp.sum(is_active) + 1e-8
         
         log_mu = jnp.log(mu_r + 1e-8)
         
-        # 2. Compute the mean of only the active pixels
         mean_log_active = jnp.sum(log_mu * is_active) / n_active
-        
-        # 3. Compute the variance of only the active pixels
         variance_active = jnp.sum(is_active * (log_mu - mean_log_active)**2) / n_active
         
         uniformity_reg = lambda_uniformity * variance_active
 
-        return loss_nll + uniformity_reg
+        phasor = jnp.exp(1j * phi)
+        phasor_sym = 0.25 * (
+            phasor + 
+            jnp.rot90(phasor, k=1) + 
+            jnp.rot90(phasor, k=2) + 
+            jnp.rot90(phasor, k=3)
+        )
+        
+        sym_reg = lambda_sym * jnp.sum(jnp.abs(phasor - phasor_sym)**2)
+
+        return loss_nll + uniformity_reg + sym_reg
 
     loss_and_grad_fn = jax.value_and_grad(nll)
 
     @jax.jit
     def stepper(params, opt_state):
-        loss, grads = loss_and_grad_fn(params)
+        loss, grads = loss_and_grad_fn(params)        
+        grads['phi'] = grads['phi'] * low_k_mask
+
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params_next = optax.apply_updates(params, updates)
 
-        # TODO differentiable? or relax, e.g. log_sigma, log_background.
-        params_next['phi_bz'] = jnp.mod(params_next['phi_bz'] + jnp.pi, 2 * jnp.pi) - jnp.pi    
+        params_next['phi'] = jnp.mod(params_next['phi'] + jnp.pi, 2 * jnp.pi) - jnp.pi    
 
         return params_next, opt_state, loss
 
@@ -222,7 +227,6 @@ def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensi
         f.create_dataset("slm_phases", data=np.array(final_phi))
         f.create_dataset("inferred_lattice", data=np.array(final_inferred_intensity))
 
-        # TODO
         f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
         f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
         f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
@@ -249,8 +253,8 @@ def plot_holography(hdf5_path, name):
     panels = [
         (axs[0, 0], source, "source", "magma", None, None),
         (axs[0, 1], sampled, "sampled", "magma", None, None),
-        (axs[1, 0], phi, r"inferred Phase", "twilight", 0, 2 * np.pi),
-        (axs[1, 1], inferred, "inferred Intensity", "magma", None, None),
+        (axs[1, 0], phi, r"inferred phase", "twilight", 0, 2 * np.pi),
+        (axs[1, 1], inferred, "inferred intensity", "magma", None, None),
     ]
 
     for ax, data, title, cmap, vmin, vmax in panels:
@@ -265,15 +269,22 @@ def plot_holography(hdf5_path, name):
 
 
 def main():
+    mode = "full" # Options: "bz" or "full"
+    
     data = trap_data()
-
-    _, bz_shape = get_reciprocal_lattice(data["N"], data["lattice_geometry"]["basis_vectors"])
     N = data["N"]
 
+    _, bz_shape = get_reciprocal_lattice(N, data["lattice_geometry"]["basis_vectors"])
+
     key = jax.random.PRNGKey(99)
+    
+    if mode == "bz":
+        phi_shape = bz_shape
+    else:
+        phi_shape = (N, N)
 
     initial_params = {
-        'phi_bz': jax.random.uniform(key, bz_shape, minval=-jnp.pi, maxval=jnp.pi),
+        'phi': jax.random.uniform(key, phi_shape, minval=-jnp.pi, maxval=jnp.pi),
         'log_sigma': jnp.log(1.5),
         'log_background': jnp.log(1.0)
     }
@@ -286,12 +297,12 @@ def main():
         optimizer,
         data["amplitude_k"],
         data["target_image"],
-        data["N"],
+        N,
     )
 
-    iterations = 1_000
+    iterations = 10_000
 
-    print(f"Optimizing over {iterations} iterations...")
+    print(f"Optimizing over {iterations} iterations in {mode} mode...")
 
     for i in range(iterations):
         params, opt_state, loss = stepper(params, opt_state)
@@ -299,19 +310,19 @@ def main():
         if i % 100 == 0 or i == iterations - 1:
             print(f"Iteration {i:04d} | Loss: {loss:.4f}")
 
-    # TODO here we need to take the known_mask, and convolve is with final_phi_full
-    #      in fourier space, as it masks the image, to calculate the true "final_phi_full". 
-    final_phi_full = tile_image(params['phi_bz'], N)
+    final_phi_full = tile_image(params['phi'], N)
+    
+    final_sigma = jnp.exp(params['log_sigma'])
 
+    # NB no background.
     final_inferred_intensity = forward(
-        N, final_phi_full, data["amplitude_k"], data["psf_sigma"], data["background_rate"]
+        N, final_phi_full, data["amplitude_k"], final_sigma, 0.0
     )
 
     write_trap_data_to_hdf5("./results/data/trap_inputs.h5", data)
     write_results_to_hdf5("./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity)
 
-    fig, _ = plot_holography("./results/data/trap_results.h5", "BZ-descent phase")
-
+    fig, _ = plot_holography("./results/data/trap_results.h5", f"{mode.upper()}-descent phase")
     fig.savefig("./results/plots/holography.pdf", dpi=300, bbox_inches="tight")
 
 
