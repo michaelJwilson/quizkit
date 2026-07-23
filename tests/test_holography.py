@@ -19,7 +19,6 @@ def trap_data(psf):
     key, subkey = jax.random.split(key)
     
     spacing = 8 
-    # An 8x8 grid spans 7 intervals. 7 * 8 = 56 pixels wide.
     start = (N - 7 * spacing) // 2
     origin = jnp.array([start, start])
     
@@ -28,10 +27,8 @@ def trap_data(psf):
         [0, spacing]
     ])
     
-    # 1. Generate full 8x8 grid
     trap_indices_full = list(itertools.product(range(8), range(8)))
     
-    # 2. Apply 20% dropout
     dropout = 0.2
     keep_mask = jax.random.bernoulli(subkey, p=1.0 - dropout, shape=(len(trap_indices_full),))
     trap_indices = [trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]]
