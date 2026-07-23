@@ -2,7 +2,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 import optax
-from quizkit.holography import create_model_stepper
+from quizkit.holography import forward, create_model_stepper, plot_holography
 
 @pytest.fixture
 def psf(N=64, sigma=1.5):
@@ -31,7 +31,7 @@ def trap_data(psf):
     source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
     convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho"))
     
-    background = 100.0
+    background = 1.0
     expected_counts = convolved_lattice + background
     sampled_lattice = jax.random.poisson(key, expected_counts).astype(jnp.float32)
     
@@ -44,11 +44,11 @@ def trap_data(psf):
         'background': background
     }
 
+# NB pytest -s tests/test_holography.py::test_holography
 def test_holography(trap_data):
     learning_rate = 1e-2
     optimizer = optax.adam(learning_rate=learning_rate)
     
-    # We pass the optimizer in during initialization
     stepper = create_model_stepper(
         optimizer=optimizer,
         amplitude_k=trap_data['amplitude_k'],
@@ -71,3 +71,22 @@ def test_holography(trap_data):
         
     assert loss < initial_loss, f"Loss failed to decrease. Init: {initial_loss:.2f}, Final: {loss:.2f}"
     assert jnp.all(jnp.isfinite(phi)), "Phase array contains NaNs."
+
+    otf = jnp.fft.fft2(jnp.fft.ifftshift(trap_data['psf']), norm="ortho")
+    
+    inferred_lattice = forward(
+        phi, trap_data['amplitude_k'], otf, trap_data['background']
+    )
+    
+    source_lattice = 5_000.0 * trap_data['mask']
+    source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
+    convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho")) + trap_data['background']
+
+    fig, _ = plot_holography(
+        phi=phi, 
+        source_lattice=convolved_lattice, 
+        sampled_lattice=trap_data['target_image'], 
+        inferred_lattice=inferred_lattice
+    )
+    
+    fig.savefig('./holography.pdf', dpi=300, bbox_inches='tight')

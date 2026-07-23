@@ -2,6 +2,9 @@ import jax
 import jax.numpy as jnp
 import optax
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 def forward(phi, amplitude_k, otf, background):
     u_k = amplitude_k * jnp.exp(1j * phi)
     
@@ -14,25 +17,16 @@ def forward(phi, amplitude_k, otf, background):
     return jnp.clip(mu_r, a_min=1e-6)
 
 def create_model_stepper(optimizer, amplitude_k, psf, target_image, mask, background=0.0):
-    # Precompute OTF once
     otf = jnp.fft.fft2(jnp.fft.ifftshift(psf), norm="ortho")
-    
-    # 1. Precompute indices: This executes eagerly in Python just once.
-    # jnp.where returns a tuple of arrays (row_indices, col_indices)
     trap_idx = jnp.where(mask > 0)
     
-    # 2. Extract static target values and weights at those coordinates
     target_traps = target_image[trap_idx]
     mask_weights = mask[trap_idx]
     
     def nll(phi):
-        # The FFTs still process the full NxN array
-        mu_r = forward(phi, amplitude_k, otf, background)
-        
-        # 3. Gather: Extract only the predicted intensities at the trap locations
+        mu_r = forward(phi, amplitude_k, otf, background)        
         mu_traps = mu_r[trap_idx]
         
-        # 4. Compute the loss ONLY on the active subset
         trap_loss = mu_traps - target_traps * jnp.log(mu_traps)
         
         return jnp.sum(mask_weights * trap_loss)
@@ -47,3 +41,29 @@ def create_model_stepper(optimizer, amplitude_k, psf, target_image, mask, backgr
         return phi_next, opt_state, loss
 
     return stepper
+
+def plot_holography(phi, source_lattice, sampled_lattice, inferred_lattice):
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'axes.titlesize': 14,
+        'figure.titlesize': 16,
+    })
+    
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10), constrained_layout=True)
+    
+    panels = [
+        (axs[0, 0], phi, r'Inferred Phase Pattern ($\phi$)', 'twilight', 0, 2*np.pi),
+        (axs[0, 1], source_lattice, 'Source Lattice (Ideal)', 'magma', None, None),
+        (axs[1, 0], sampled_lattice, 'Sampled Lattice (Target)', 'magma', None, None),
+        (axs[1, 1], inferred_lattice, 'Inferred Lattice (Prediction)', 'magma', None, None),
+    ]
+    
+    for ax, data, title, cmap, vmin, vmax in panels:
+        im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_title(title)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        
+    return fig, axs
