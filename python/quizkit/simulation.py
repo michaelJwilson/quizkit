@@ -3,7 +3,12 @@ import galsim
 
 
 def get_galsim_image(
-    image_size=128, grid_dimensions=(8, 8), source_spacing_pixels=16, counts_per_source=2_500, psf_sigma=1.0, dropout_rate=0.25,
+    image_size=128,
+    grid_dimensions=(8, 8),
+    source_spacing_pixels=16,
+    counts_per_source=2_500,
+    psf_sigma=1.0,
+    dropout_rate=0.25,
 ):
     # DEPRECATE
     pixel_scale = 0.2  # arcsec / pixel
@@ -11,9 +16,9 @@ def get_galsim_image(
     image = galsim.ImageF(image_size, image_size, scale=pixel_scale)
     psf = galsim.Gaussian(sigma=psf_sigma)
 
-    # TODO ... 
+    # TODO ...
     nx, ny = grid_dimensions
-    
+
     start_x = -(nx - 1) / 2.0 * source_spacing_pixels
     start_y = -(ny - 1) / 2.0 * source_spacing_pixels
 

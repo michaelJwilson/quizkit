@@ -22,8 +22,8 @@ def trap_data(
     psf=None,
     dropout_rate=0.4,
     psf_sigma=1.5,
-    source_amplitude=5_000.0, # TODO conservation of energy for FFT, conditioned on N.
-    background_rate=1.0,
+    source_amplitude=5_000.0,  # TODO conservation of energy for FFT, conditioned on N.
+    background_rate=0.5,
 ):
     key = jax.random.PRNGKey(42)
     key, subkey = jax.random.split(key)
@@ -38,11 +38,8 @@ def trap_data(
 
     extent_x = (grid_x - 1) * basis_vectors[0][0] + (grid_y - 1) * basis_vectors[1][0]
     extent_y = (grid_x - 1) * basis_vectors[0][1] + (grid_y - 1) * basis_vectors[1][1]
-    
-    origin = jnp.array([
-        (N - extent_x) // 2,
-        (N - extent_y) // 2
-    ])
+
+    origin = jnp.array([(N - extent_x) // 2, (N - extent_y) // 2])
 
     trap_indices_full = list(itertools.product(range(grid_x), range(grid_y)))
 
@@ -58,13 +55,19 @@ def trap_data(
         pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
         mask = mask.at[pos[0], pos[1]].set(1.0)
 
-    xs = [int(origin[0] + i * basis_vectors[0][0] + j * basis_vectors[1][0]) for i, j in trap_indices_full]
-    ys = [int(origin[1] + i * basis_vectors[0][1] + j * basis_vectors[1][1]) for i, j in trap_indices_full]
-    
+    xs = [
+        int(origin[0] + i * basis_vectors[0][0] + j * basis_vectors[1][0])
+        for i, j in trap_indices_full
+    ]
+    ys = [
+        int(origin[1] + i * basis_vectors[0][1] + j * basis_vectors[1][1])
+        for i, j in trap_indices_full
+    ]
+
     pad = spacing // 2
     min_x, max_x = max(0, min(xs) - pad), min(N, max(xs) + pad + 1)
     min_y, max_y = max(0, min(ys) - pad), min(N, max(ys) + pad + 1)
-    
+
     perimeter_mask = jnp.zeros((N, N)).at[min_x:max_x, min_y:max_y].set(1.0)
 
     source_lattice = source_amplitude * mask
@@ -80,7 +83,6 @@ def trap_data(
 
     total_target_power = source_amplitude * len(trap_indices)
     required_amplitude = jnp.sqrt(total_target_power / (N * N))
-
 
     return {
         "N": N,
@@ -116,21 +118,22 @@ def get_reciprocal_lattice(N, basis_vectors):
 
     return B, bz_shape
 
+
 def tile_image(image, N):
     h, w = image.shape
-    
+
     # NB: If h == N and w == N, reps evaluate to 1.
     # No explicit branching is required for full-field vs BZ modes.
     reps_h = (N + h - 1) // h
     reps_w = (N + w - 1) // w
-    
+
     tiled = jnp.tile(image, (reps_h, reps_w))
-    
+
     return tiled[:N, :N]
 
 
 def forward(N, phi, amplitude_k, psf_sigma, background):
-    psf = get_psf(N, psf_sigma)   
+    psf = get_psf(N, psf_sigma)
     otf = jnp.fft.fft2(jnp.fft.ifftshift(psf), norm="ortho")
 
     u_k = amplitude_k * jnp.exp(1j * phi)
@@ -149,50 +152,54 @@ def forward(N, phi, amplitude_k, psf_sigma, background):
 
     mu_r = jnp.real(jnp.fft.fftshift(mu_r_unshifted))
 
-    return background + jnp.clip(mu_r, a_min=1e-6)
+    return background + jnp.clip(mu_r, a_min=1e-1)
 
 
 def create_model_stepper(
-    optimizer, amplitude_k, target_image, N, lambda_uniformity=1.e1, lambda_sym=0.0, 
+    optimizer,
+    amplitude_k,
+    target_image,
+    N,
+    lambda_uniformity=1.0,
+    lambda_sym=0.0,
+    min_sigma=0.9,
 ):
-    y, x = jnp.ogrid[-N//2 : N//2, -N//2 : N//2]
+    y, x = jnp.ogrid[-N // 2 : N // 2, -N // 2 : N // 2]
     k2 = x**2 + y**2
 
     # TODO
     max_k2 = jnp.percentile(k2, 50)
 
     low_k_mask = (k2 <= max_k2).astype(jnp.float32)
-    
+
     def nll(params):
-        phi = params['phi']
-        psf_sigma = jnp.exp(params['log_sigma'])
-        background = jnp.exp(params['log_background'])
- 
+        phi = params["phi"]
+        psf_sigma = min_sigma + jnp.exp(params["log_sigma_excess"])
+        background = jnp.exp(params["log_background"])
+
         phi_full = tile_image(phi, N)
-     
+
         mu_r = forward(N, phi_full, amplitude_k, psf_sigma, background)
 
         loss_nll = jnp.sum(mu_r - target_image * jnp.log(mu_r + 1e-8))
 
-        is_active = (mu_r > 0.0).astype(jnp.float32)
+        is_active = (mu_r > 2.0 * background).astype(jnp.float32)
         n_active = jnp.sum(is_active) + 1e-8
-        
-        log_mu = jnp.log(mu_r + 1e-8)
-        
-        mean_log_active = jnp.sum(log_mu * is_active) / n_active
-        variance_active = jnp.sum(is_active * (log_mu - mean_log_active)**2) / n_active
-        
+
+        mean_active = jnp.sum(mu_r * is_active) / n_active
+        variance_active = jnp.sum(is_active * (mu_r - mean_active) ** 2) / n_active
+
         uniformity_reg = lambda_uniformity * variance_active
 
         phasor = jnp.exp(1j * phi)
         phasor_sym = 0.25 * (
-            phasor + 
-            jnp.rot90(phasor, k=1) + 
-            jnp.rot90(phasor, k=2) + 
-            jnp.rot90(phasor, k=3)
+            phasor
+            + jnp.rot90(phasor, k=1)
+            + jnp.rot90(phasor, k=2)
+            + jnp.rot90(phasor, k=3)
         )
-        
-        sym_reg = lambda_sym * jnp.sum(jnp.abs(phasor - phasor_sym)**2)
+
+        sym_reg = lambda_sym * jnp.sum(jnp.abs(phasor - phasor_sym) ** 2)
 
         return loss_nll + uniformity_reg + sym_reg
 
@@ -200,13 +207,13 @@ def create_model_stepper(
 
     @jax.jit
     def stepper(params, opt_state):
-        loss, grads = loss_and_grad_fn(params)        
-        grads['phi'] = grads['phi'] * low_k_mask
+        loss, grads = loss_and_grad_fn(params)
+        grads["phi"] = grads["phi"] * low_k_mask
 
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params_next = optax.apply_updates(params, updates)
 
-        params_next['phi'] = jnp.mod(params_next['phi'] + jnp.pi, 2 * jnp.pi) - jnp.pi    
+        params_next["phi"] = jnp.mod(params_next["phi"] + jnp.pi, 2 * jnp.pi) - jnp.pi
 
         return params_next, opt_state, loss
 
@@ -271,18 +278,23 @@ def plot_holography(hdf5_path):
     plt.tight_layout()
     return fig, axs
 
+
 def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
     true_sigma = data["psf_sigma"]
     sigma_err = abs(final_sigma - true_sigma) / true_sigma
-    print(f"PSF Sigma:      True = {true_sigma:.3f} | Inferred = {final_sigma:.3f} | Error = {sigma_err:.2%}")
-    
+    print(
+        f"PSF Sigma:      True = {true_sigma:.3f} | Inferred = {final_sigma:.3f} | Error = {sigma_err:.2%}"
+    )
+
     true_bg = data["background_rate"]
     bg_err = abs(final_background - true_bg) / true_bg
-    print(f"Background:     True = {true_bg:.3f} | Inferred = {final_background:.3f} | Error = {bg_err:.2%}")
+    print(
+        f"Background:     True = {true_bg:.3f} | Inferred = {final_background:.3f} | Error = {bg_err:.2%}"
+    )
 
     origin = data["lattice_geometry"]["origin"]
     basis_vectors = data["lattice_geometry"]["basis_vectors"]
-    
+
     true_active_coords = data["lattice_geometry"]["trap_indices"]
     all_coords = data["lattice_geometry"]["trap_indices_full"]
     true_dropouts = [c for c in all_coords if c not in true_active_coords]
@@ -297,7 +309,7 @@ def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
 
     active_peaks = sample_peaks(true_active_coords)
     dropout_peaks = sample_peaks(true_dropouts)
-    
+
     mean_active = np.mean(active_peaks)
     std_active = np.std(active_peaks)
     fractional_precision = std_active / mean_active
@@ -314,25 +326,35 @@ def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
 
     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-    
-    worst_ghost_ratio = np.max(dropout_peaks) / mean_active if len(dropout_peaks) > 0 else 0.0
+
+    worst_ghost_ratio = (
+        np.max(dropout_peaks) / mean_active if len(dropout_peaks) > 0 else 0.0
+    )
 
     print(f"Dropout Logic:  Threshold set at 5% of global max ({threshold:.2f})")
-    print(f"                Sensitivity (TPR) = {sensitivity:.2%} ({tp}/{tp+fn} active traps recovered)")
-    print(f"                Specificity (TNR) = {specificity:.2%} ({tn}/{tn+fp} dropouts kept dark)")
-    print(f"                Worst Ghost Trap  = {worst_ghost_ratio:.2%} of mean active trap depth")
+    print(
+        f"                Sensitivity (TPR) = {sensitivity:.2%} ({tp}/{tp+fn} active traps recovered)"
+    )
+    print(
+        f"                Specificity (TNR) = {specificity:.2%} ({tn}/{tn+fp} dropouts kept dark)"
+    )
+    print(
+        f"                Worst Ghost Trap  = {worst_ghost_ratio:.2%} of mean active trap depth"
+    )
 
     optical_signal = inferred_intensity - final_background
-    
+
     source_img = data["source_image"]
     useful_mask = source_img > (0.01 * np.max(source_img))
-    
+
     total_power = np.sum(optical_signal)
     useful_power = np.sum(optical_signal * useful_mask)
-    
+
     diffraction_efficiency = useful_power / total_power if total_power > 0 else 0.0
-    print(f"Efficiency:     {diffraction_efficiency:.2%} of laser power routed to target traps")
-    
+    print(
+        f"Efficiency:     {diffraction_efficiency:.2%} of laser power routed to target traps"
+    )
+
     return {
         "sigma_err": sigma_err,
         "bg_err": bg_err,
@@ -340,28 +362,31 @@ def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
         "sensitivity": sensitivity,
         "specificity": specificity,
         "worst_ghost_ratio": worst_ghost_ratio,
-        "diffraction_efficiency": diffraction_efficiency
+        "diffraction_efficiency": diffraction_efficiency,
     }
+
 
 def main():
     mode = "full"
-    
+
     data = trap_data()
     N = data["N"]
 
     _, bz_shape = get_reciprocal_lattice(N, data["lattice_geometry"]["basis_vectors"])
 
     key = jax.random.PRNGKey(99)
-    
+
     if mode == "bz":
         phi_shape = bz_shape
     else:
         phi_shape = (N, N)
 
+    min_sigma = 1.2
+
     initial_params = {
-        'phi': jax.random.uniform(key, phi_shape, minval=-jnp.pi, maxval=jnp.pi),
-        'log_sigma': jnp.log(1.5),
-        'log_background': jnp.log(1.0)
+        "phi": jax.random.uniform(key, phi_shape, minval=-jnp.pi, maxval=jnp.pi),
+        "log_sigma_excess": jnp.log(1.5 - min_sigma),
+        "log_background": jnp.log(1.0),
     }
 
     optimizer = optax.adam(learning_rate=0.1)
@@ -373,6 +398,7 @@ def main():
         data["amplitude_k"],
         data["target_image"],
         N,
+        min_sigma=min_sigma,
     )
 
     iterations = 10_000
@@ -385,20 +411,24 @@ def main():
         if i % 100 == 0 or i == iterations - 1:
             print(f"Iteration {i:04d} | Loss: {loss:.4f}")
 
-    final_phi_full = tile_image(params['phi'], N)
-    
-    final_sigma = jnp.exp(params['log_sigma'])
-    final_background = jnp.exp(params['log_background'])
+    final_phi_full = tile_image(params["phi"], N)
+
+    final_sigma = min_sigma + jnp.exp(params["log_sigma_excess"])
+    final_background = jnp.exp(params["log_background"])
 
     # NB no background.
     final_inferred_intensity = forward(
         N, final_phi_full, data["amplitude_k"], final_sigma, 0.0
     )
 
-    metrics = evaluate_metrics(data, final_inferred_intensity, final_sigma, final_background)
+    metrics = evaluate_metrics(
+        data, final_inferred_intensity, final_sigma, final_background
+    )
 
     write_trap_data_to_hdf5("./results/data/trap_inputs.h5", data)
-    write_results_to_hdf5("./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity)
+    write_results_to_hdf5(
+        "./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity
+    )
 
     fig, _ = plot_holography("./results/data/trap_results.h5")
     fig.savefig("./results/plots/holography.pdf", dpi=300, bbox_inches="tight")
