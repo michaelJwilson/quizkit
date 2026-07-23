@@ -157,7 +157,7 @@ def forward(N, phi, amplitude_k, psf_sigma, background):
 
 
 def create_model_stepper(
-    optimizer, amplitude_k, target_image, N, lambda_uniformity=7e4
+    optimizer, amplitude_k, target_image, N, lambda_uniformity=0.
 ):
     def nll(params):
         phi_bz = params['phi_bz']
