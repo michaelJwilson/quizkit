@@ -15,7 +15,7 @@ fn process_image(hdf5_str: &str) -> ndarray::ArrayD<f64> {
     data_array
 }
 
-// NB cargo run --bin run_oxiquizkit --release -- ../results/data/test_image.hdf5
+// NB cargo run --bin run_oxiquizkit --release -- ../results/data/trap_inputs.h5
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -41,7 +41,7 @@ fn main() {
 
     let iterations = 50;
 
-    let slm_phase = holography_engine.gerchberg_saxton_slm_phase(
+    let (slm_phase, model_intensity) = holography_engine.gerchberg_saxton(
         &target_amplitude,
         &slm_illumination,
         iterations,
@@ -51,6 +51,7 @@ fn main() {
         "../results/data/trap_gerchberg_saxton.h5",
         slm_phase.view(),
         slm_illumination.view(),
+        model_intensity.view(),
         target_amplitude.view(),
     )
     .expect("Failed to write HDF5 data");

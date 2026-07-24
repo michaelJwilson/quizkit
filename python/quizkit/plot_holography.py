@@ -14,10 +14,11 @@ def plot_holography(hdf5_path):
     )
 
     with h5py.File(hdf5_path, "r") as f:
-        source = f["source_image"][:]
-        sampled = f["target_image"][:]
-        phi = f["slm_phases"][:]
-        inferred = f["inferred_lattice"][:]
+        # Safely extract data only if the key exists in the file
+        source = f["source_image"][:] if "source_image" in f else None
+        sampled = f["target_image"][:] if "target_image" in f else None
+        phi = f["slm_phases"][:] if "slm_phases" in f else None
+        inferred = f["model_intensity"][:] if "model_intensity" in f else None
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 10))
 
@@ -29,11 +30,14 @@ def plot_holography(hdf5_path):
     ]
 
     for ax, data, title, cmap, vmin, vmax in panels:
-        im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-        ax.set_title(title)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        if data is not None:
+            im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+            ax.set_title(title)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        else:
+            ax.axis("off")
 
     plt.tight_layout()
     return fig, axs

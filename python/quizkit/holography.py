@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import h5py
 import optax
 import itertools
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -327,12 +326,12 @@ def write_trap_data_to_hdf5(filepath, trap_data):
         )
 
 
-def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensity):
+def write_results_to_hdf5(filepath, trap_data, final_phi, model_intensity):
     with h5py.File(filepath, "w") as f:
         f.create_dataset("slm_phases", data=np.array(final_phi))
         f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
 
-        f.create_dataset("inferred_lattice", data=np.array(final_inferred_intensity))
+        f.create_dataset("model_intensity", data=np.array(model_intensity))
 
         f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
         f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
@@ -403,9 +402,6 @@ def main():
     write_results_to_hdf5(
         "./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity
     )
-
-    fig, _ = plot_holography("./results/data/trap_results.h5")
-    fig.savefig("./results/plots/holography.pdf", dpi=300, bbox_inches="tight")
 
 
 if __name__ == "__main__":

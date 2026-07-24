@@ -5,6 +5,7 @@ pub fn write_hologram(
     filepath: &str,
     slm_phases: ArrayView2<f64>,
     slm_illumination: ArrayView2<f64>,
+    model_intensity: ArrayView2<f64>,
     target_image: ArrayView2<f64>,
 ) -> Result<()> {
     let file = File::create(filepath)?;
@@ -18,6 +19,11 @@ pub fn write_hologram(
         .shape(slm_illumination.shape())
         .create("slm_illumination")?
         .write(&slm_illumination)?;
+        
+    file.new_dataset::<f64>()
+        .shape(model_intensity.shape())
+        .create("model_intensity")?
+        .write(&model_intensity)?;
 
     file.new_dataset::<f64>()
         .shape(target_image.shape())

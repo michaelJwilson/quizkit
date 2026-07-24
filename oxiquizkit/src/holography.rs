@@ -121,12 +121,12 @@ impl HolographyEngine {
             );
     }
 
-    pub fn gerchberg_saxton_slm_phase(
+    pub fn gerchberg_saxton(
         &mut self,
         target_amplitude: &Array2<f64>,
         slm_illumination: &Array2<f64>,
         max_iters: usize,
-    ) -> Array2<f64> {
+    ) -> (Array2<f64>, Array2<f64>) {
         let target_amp_slice = target_amplitude.as_slice().unwrap();
         let slm_ill_slice = slm_illumination.as_slice().unwrap();
 
@@ -151,16 +151,29 @@ impl HolographyEngine {
             .c2c(&mut self.inb, &mut self.outb)
             .unwrap();
 
+        // Extract the SLM phase from the input plane (inb)
         let phase_vec: Vec<f64> = self
-            .outb
+            .inb
             .iter()
             .map(|c| c.arg() + std::f64::consts::PI)
             .collect();
 
-        println!("Successful phase extraction with Gerchberg-Saxton.");
+        // Extract the model intensity from the output plane (outb)
+        // norm_sqr() computes real^2 + imag^2, yielding physical intensity
+        let intensity_vec: Vec<f64> = self
+            .outb
+            .iter()
+            .map(|c| c.norm_sqr()) 
+            .collect();
 
-        // Reshape into an ndarray and return
-        Array2::from_shape_vec((self.rows, self.cols), phase_vec)
-            .expect("Shape mismatch during phase extraction")
+        println!("Successful phase and intensity extraction with Gerchberg-Saxton.");
+
+        let slm_phase = Array2::from_shape_vec((self.rows, self.cols), phase_vec)
+            .expect("Shape mismatch during phase extraction");
+            
+        let model_intensity = Array2::from_shape_vec((self.rows, self.cols), intensity_vec)
+            .expect("Shape mismatch during intensity extraction");
+
+        (slm_phase, model_intensity)
     }
 }
