@@ -226,64 +226,6 @@ def create_model_stepper(
     return stepper
 
 
-def write_trap_data_to_hdf5(filepath, trap_data):
-    with h5py.File(filepath, "w") as f:
-        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
-        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
-        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
-
-        geom = f.create_group("lattice_geometry")
-        geom.attrs["origin"] = np.array(trap_data["lattice_geometry"]["origin"])
-        geom.attrs["basis_vectors"] = np.array(
-            trap_data["lattice_geometry"]["basis_vectors"]
-        )
-
-
-def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensity):
-    with h5py.File(filepath, "w") as f:
-        f.create_dataset("slm_phases", data=np.array(final_phi))
-        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
-
-        f.create_dataset("inferred_lattice", data=np.array(final_inferred_intensity))
-
-        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
-        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
-
-
-def plot_holography(hdf5_path):
-    plt.rcParams.update(
-        {
-            "font.family": "serif",
-            "axes.titlesize": 14,
-            "figure.titlesize": 16,
-        }
-    )
-
-    with h5py.File(hdf5_path, "r") as f:
-        source = f["source_image"][:]
-        sampled = f["target_image"][:]
-        phi = f["slm_phases"][:]
-        inferred = f["inferred_lattice"][:]
-
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-
-    panels = [
-        (axs[0, 0], source, "source", "magma", None, None),
-        (axs[0, 1], sampled, "sampled", "magma", None, None),
-        (axs[1, 0], phi, r"inferred phase", "twilight", 0, 2 * np.pi),
-        (axs[1, 1], inferred, "inferred intensity", "magma", None, None),
-    ]
-
-    for ax, data, title, cmap, vmin, vmax in panels:
-        im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-        ax.set_title(title)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    plt.tight_layout()
-    return fig, axs
-
 # TODO
 def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
     true_sigma = data["psf_sigma"]
@@ -370,6 +312,30 @@ def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
         "worst_ghost_ratio": worst_ghost_ratio,
         "diffraction_efficiency": diffraction_efficiency,
     }
+
+
+def write_trap_data_to_hdf5(filepath, trap_data):
+    with h5py.File(filepath, "w") as f:
+        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
+        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
+        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
+
+        geom = f.create_group("lattice_geometry")
+        geom.attrs["origin"] = np.array(trap_data["lattice_geometry"]["origin"])
+        geom.attrs["basis_vectors"] = np.array(
+            trap_data["lattice_geometry"]["basis_vectors"]
+        )
+
+
+def write_results_to_hdf5(filepath, trap_data, final_phi, final_inferred_intensity):
+    with h5py.File(filepath, "w") as f:
+        f.create_dataset("slm_phases", data=np.array(final_phi))
+        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
+
+        f.create_dataset("inferred_lattice", data=np.array(final_inferred_intensity))
+
+        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
+        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
 
 
 def main():
