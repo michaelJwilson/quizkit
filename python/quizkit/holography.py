@@ -159,8 +159,8 @@ def create_model_stepper(
     amplitude_k,
     target_image,
     N,
-    lambda_uniformity=1.0,
-    lambda_sym=1.e2,
+    lambda_uniformity=0.0,
+    lambda_sym=0.0,
     min_sigma=0.9,
 ):
     y, x = jnp.ogrid[-N // 2 : N // 2, -N // 2 : N // 2]
@@ -369,7 +369,7 @@ def main():
     stepper = create_model_stepper(
         optimizer,
         data["amplitude_k"],
-        data["perimeter_mask"], # HACK data["target_image"],
+        data["target_image"], # HACK data["perimeter_mask"],
         N,
         min_sigma=min_sigma,
     )
@@ -394,9 +394,9 @@ def main():
         N, final_phi_full, data["amplitude_k"], final_sigma, 0.0
     )
 
-    metrics = evaluate_metrics(
-        data, final_inferred_intensity, final_sigma, final_background
-    )
+    # metrics = evaluate_metrics(
+    #     data, final_inferred_intensity, final_sigma, final_background
+    # )
 
     write_trap_data_to_hdf5("./results/data/trap_inputs.h5", data)
     write_results_to_hdf5(
