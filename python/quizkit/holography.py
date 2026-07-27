@@ -100,8 +100,16 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
 
     return final_phase, final_intensity
 
+def smooth_phase_regularization(phase):
+    diff_x = jnp.diff(phase, axis=1)
+    diff_y = jnp.diff(phase, axis=0)
+    
+    penalty_x = 1.0 - jnp.cos(diff_x)
+    penalty_y = 1.0 - jnp.cos(diff_y)
+    
+    return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
-def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
+def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=1.e3):
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
@@ -119,8 +127,7 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
             jnp.mean(target_intensity_native) + 1e-12
         )
 
-        loss = jnp.mean(jnp.abs(norm_inferred - norm_target))
-
+        loss = jnp.mean(jnp.abs(norm_inferred - norm_target)) + smooth_lambda * smooth_phase_regularization(phase)
         return loss
 
     loss_and_grad = jax.value_and_grad(loss)
@@ -202,7 +209,7 @@ if __name__ == "__main__":
         key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
     )
 
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=True, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
 
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
