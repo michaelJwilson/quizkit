@@ -277,8 +277,6 @@ if __name__ == "__main__":
 
     pprint(performance_metrics)
 
-    exit(0)
-
     # TODO
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
     half = 130
@@ -298,6 +296,7 @@ if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
 
+    # TODO better write of config.
     write_hdf5(
         filepath=hdf5_path,
         data=slm_phase,

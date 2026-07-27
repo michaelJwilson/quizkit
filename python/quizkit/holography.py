@@ -168,12 +168,13 @@ def write_hdf5(filepath, data, group_name, dataset_name, compression="gzip", ove
         logger.error(f"Failed to write HDF5 file {filepath}: {e}")
         raise
 
-# ==========================================
-# 5. Pipeline Execution
-# ==========================================
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+
+
+
+    exit(0)
     
     # 1. Define hardware constants & arrays
     WAVELENGTH = 780e-9
@@ -181,9 +182,8 @@ if __name__ == "__main__":
     N = 256 # Grid size for this example
     
     key = jax.random.PRNGKey(42)
-    slm_illumination = jnp.ones((N, N)) # Replace with your Gaussian profile
+    slm_illumination = jnp.ones((N, N)) 
     
-    # Dummy Target: 4 traps in a square
     target_intensity = jnp.zeros((N, N))
     target_intensity = target_intensity.at[N//2-10, N//2-10].set(1.0)
     target_intensity = target_intensity.at[N//2+10, N//2-10].set(1.0)
@@ -193,16 +193,15 @@ if __name__ == "__main__":
     target_amp = jnp.sqrt(target_intensity)
     initial_phase = jax.random.uniform(key, (N, N), minval=-jnp.pi, maxval=jnp.pi)
     
-    # 2. Swap strategies cleanly here
     config = SolverConfig(
-        method="GS",         # Change to "GD" to swap the backend instantly
+        method="GS",         # {"GS", "GD"}
         maxiter=30,
         smooth_phase=True,   # Toggles Gaussian blur inside the GS loop
         smooth_sigma=1.5
     )
     
-    # 3. Execute Optimization
     logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
+
     final_phase, inferred_intensity = solve_hologram(slm_illumination, target_amp, initial_phase, config)
     
     # Optional: Calculate metrics here
