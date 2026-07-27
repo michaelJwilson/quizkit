@@ -1,4 +1,5 @@
 import datetime
+import random
 import matplotlib.pyplot as plt
 import numpy as np
 from rich.pretty import pprint
@@ -13,7 +14,7 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
-# TODO no reproducibility (!)
+random.seed(42)
 np.random.seed(42)
 
 
@@ -307,7 +308,7 @@ if __name__ == "__main__":
         array_pitch=ARRAY_PITCH,
         basis="knm",  # pixel coordinates in the far-field image plane
         amp=slm_illumination,  # fixed Gaussian illumination
-        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE),
+        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE), # reproducibility required.
     )
 
     # NB callback definition,
