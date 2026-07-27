@@ -15,6 +15,7 @@ https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.htm
 
 np.random.seed(42)
 
+
 def get_uniform_slm_illumination(slm_shape):
     return np.ones(slm_shape, dtype=np.float32)
 
@@ -101,12 +102,11 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     max_steering_angle_deg = np.degrees(max_steering_angle)
 
     # NB nyquist wavenumber on the image place,
-    farfield_extent = wavelength / pixel_pitch / 2. # radians
-    farfield_resolution = farfield_extent / slm_shape# radians, assumes square slm pixels.
+    farfield_extent = max_steering_angle / 2.0  # radians
+    farfield_resolution = (
+        farfield_extent / slm_shape
+    )  # radians, assumes square slm pixels.
 
-    # print(max_steering_angle_deg)
-    # print(slm_fundamental_modes)
-    # print(nyquist_max)
 
 def smooth_slm_array(array, sigma=200):
     # TODO cupy support.
@@ -116,25 +116,25 @@ def smooth_slm_array(array, sigma=200):
     #    see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
     #    see https://shimat.github.io/opencvsharp_docs/html/7b0301d7-322d-a554-8d3f-32fd8ca0ee50.htm
     # return gaussian_filter(device_array, sigma=sigma)
-    # 
+    #
     # for bordertypes, see
     #     https://shimat.github.io/opencvsharp_docs/html/040d5c3f-bd31-f5ff-76c8-106304d8135c.htm
     # return cv2.GaussianBlur(
-    #     device_array, 
-    #     ksize=(0, 0), 
-    #     sigmaX=sigma, 
+    #     device_array,
+    #     ksize=(0, 0),
+    #     sigmaX=sigma,
     #     sigmaY=sigma
     # )
     device_array = np.asarray(array)
     complex_field = np.exp(1j * device_array)
-            
-    return gaussian_filter(complex_field, sigma=sigma, mode='wrap')
+
+    return gaussian_filter(complex_field, sigma=sigma, mode="wrap")
 
 
 def smooth_phase_callback(hologram, sigma=200):
     print(f"Smoothing iteration {hologram.iter}")
 
-    # TODO BUG?  device transfer needs to be accounted for in terms of updates. 
+    # TODO BUG?  device transfer needs to be accounted for in terms of updates.
     # phase = hologram.get_phase()
     phase = hologram.phase
     phase = smooth_slm_array(phase, sigma=sigma)
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
-    # 
+    #
     # NB current nearfield phase from the GPU shifted to [0, 2*pi].
     slm_phase = hologram.get_phase()
 
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
-    
+
     write_hdf5(
         filepath=hdf5_path,
         data=slm_phase,
@@ -243,21 +243,21 @@ if __name__ == "__main__":
         dataset_name="slm_phase",
         wavelength=WAVELENGTH,
         pixel_pitch=PIXEL_PITCH,
-        maxiter=MAXITER
+        maxiter=MAXITER,
     )
 
     write_hdf5(
         filepath=hdf5_path,
         data=slm_illumination,
         group_name="slm",
-        dataset_name="slm_illumination"
+        dataset_name="slm_illumination",
     )
 
     write_hdf5(
         filepath=hdf5_path,
         data=np.abs(hologram.target) ** 2,
         group_name="target",
-        dataset_name="target_intensity"
+        dataset_name="target_intensity",
     )
 
     write_hdf5(
@@ -272,6 +272,6 @@ if __name__ == "__main__":
 # def main():
 #     run_slmsuit_phase_retrieval()
 
- 
+
 # if __name__ == "__main__":
 #     main()
