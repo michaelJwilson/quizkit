@@ -161,25 +161,30 @@ if __name__ == "__main__":
     # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L7
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
     hologram.plot_stats(show=True)
-    """
+
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
     # 
     # NB current nearfield phase from the GPU shifted to [0, 2*pi].
-    phase = hologram.get_phase()
+    slm_phase = hologram.get_phase()
 
     ff_int = np.abs(hologram.get_farfield()) ** 2
+
+    # TODO
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
     half = 130
     ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
 
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
-        phase,
+        slm_phase,
         ff_crop,
         [cx - half, cx + half, cy - half, cy + half],
     )
-    """
+
+    # TODO write hdf5 with
+    # 
+    # optimal slm_phase, (near-field) slm_illumination, (far-field) target intensity, and hologram stats
 
 
 # def main():
