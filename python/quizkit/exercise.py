@@ -85,7 +85,7 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     print(nyquist_max)
 
 
-def main():
+def run_slmsuit_phase_retrieval():
     WAVELENGTH = 780e-9  # m
     PIXEL_PITCH = 8.0e-6  # m
     SLM_SHAPE = (1200, 1920)  # (height, width) in pixels
@@ -142,6 +142,10 @@ def main():
         [cx - half, cx + half, cy - half, cy + half],
     )
     """
+
+def main():
+    run_slmsuit_phase_retrieval()
+
 
 if __name__ == "__main__":
     main()
