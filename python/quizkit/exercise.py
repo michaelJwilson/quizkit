@@ -158,7 +158,8 @@ if __name__ == "__main__":
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
 
-    # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
+    # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L7
+    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
     hologram.plot_stats(show=True)
     """
     # NB get optimized slm phase and far-field intensity,
