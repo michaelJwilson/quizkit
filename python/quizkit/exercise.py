@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+# from matplotlib.colors import LogNorm
 from slmsuite.holography.algorithms import SpotHologram
 
 WAVELENGTH = 780e-9        # m
 PIXEL_PITCH = 8.0e-6       # m
 SLM_SHAPE = (1200, 1920)   # (height, width) in pixels
 
-active_h = SLM_SHAPE[0] * PIXEL_PITCH
-active_w = SLM_SHAPE[1] * PIXEL_PITCH
+# active_h = SLM_SHAPE[0] * PIXEL_PITCH
+# active_w = SLM_SHAPE[1] * PIXEL_PITCH
 
 x = np.arange(SLM_SHAPE[1]) - (SLM_SHAPE[1] - 1) / 2
 y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
