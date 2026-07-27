@@ -90,7 +90,7 @@ def run_slmsuit_phase_retrieval():
     PIXEL_PITCH = 8.0e-6  # m
     SLM_SHAPE = (1200, 1920)  # (height, width) in pixels
 
-    # NB optical tweezer array configuration
+    # NB 10x10 optical tweezer array sampling a 200x200 image.
     ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
@@ -125,6 +125,14 @@ def run_slmsuit_phase_retrieval():
         stat_groups=["computational_spot"],
         verbose=False,
     )
+
+    hologram.plot_nearfield(cbar=True)
+
+    # limits=zoombox
+    hologram.plot_farfield(cbar=True, title='FF Amp');
+
+    exit(0)
+
 
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
