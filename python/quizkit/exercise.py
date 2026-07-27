@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from slmsuite.holography.algorithms import SpotHologram
+from slmsuite.holography.algorithms import Hologram, SpotHologram
 
 
 """
@@ -83,21 +83,19 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
     plt.close(fig)
 
 def compute_metrics(wavelength, pixel_pitch, slm_shape):
+    # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
+
     max_steering_angle = wavelength / pixel_pitch
 
     # NB O(1) degrees
     max_steering_angle_deg = np.degrees(max_steering_angle)
-
-    # NB dk_x = 1/L is goverened by the diffraction limit
-    slm_aperture_extent = np.array(slm_shape) * pixel_pitch
-    slm_fundamental_modes = 2. * np.pi / slm_aperture_extent
 
     # NB position in the image plane is k_x * eff. focal length (of a microscope).
     nyquist_max = wavelength / pixel_pitch / 2.
 
     # print(max_steering_angle_deg)
     # print(slm_fundamental_modes)
-    print(nyquist_max)
+    # print(nyquist_max)
 
 
 def run_slmsuit_phase_retrieval():
@@ -109,8 +107,7 @@ def run_slmsuit_phase_retrieval():
     ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
-    # NB gs max. iterations.
-    METHOD = "GS"
+    METHOD = "GS" # {GS, WGS}
     MAXITER = 30
 
     # NB construct source amplitude profile
@@ -147,6 +144,13 @@ def run_slmsuit_phase_retrieval():
 
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
+
+    print("here")
+
+    # NB calculated statistics of the spot array uniformity and efficiency
+    # hologram.plot_stats()
+
+    exit(0)
 
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
