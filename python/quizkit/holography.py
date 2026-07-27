@@ -48,17 +48,14 @@ def get_gaussian_blur_otf(shape, sigma):
 
 
 def propagate_ff_native(complex_near):
-    # NB pure native FFT. The origin is strictly at [0,0].
     return jnp.fft.fft2(complex_near, norm="ortho")
 
 
 def propagate_nf_native(complex_far):
-    # NB pure native IFFT. The origin is strictly at [0,0].
     return jnp.fft.ifft2(complex_far, norm="ortho")
 
 
 def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
-    # NB shift all physical arrays to the native FFT convention (origin at [0,0])
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
@@ -79,7 +76,6 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
 
         if config.smooth_phase:
             complex_phase = jnp.exp(1j * new_phase)
-            # NB everything is native, no shifts needed for the convolution
             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
             new_phase = jnp.angle(blurred_complex)
 
@@ -103,7 +99,6 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
 
 
 def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
-    # NB shift all physical arrays to the native FFT convention (origin at [0,0])
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
@@ -186,8 +181,8 @@ if __name__ == "__main__":
     assert slm_illumination.max() > 0.0
     assert target_intensity.max() > 0.0
 
-    # Explicitly enforce float64 when loading arrays to the GPU
     slm_illumination = jnp.array(slm_illumination, dtype=jnp.float64)
+
     target_intensity = jnp.array(target_intensity, dtype=jnp.float64)
     target_amp = jnp.sqrt(target_intensity)
 
@@ -217,7 +212,7 @@ if __name__ == "__main__":
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         final_phase,
-        target_intensity,
+        inferred_intensity[y_min:y_max, x_min:x_max],
         extent,
     )
 

@@ -235,27 +235,7 @@ def smooth_slm_array(array, sigma=200):
     return gaussian_filter(complex_field, sigma=sigma, mode="wrap")
 
 
-def smooth_phase_callback(hologram, sigma=200):
-    # TODO see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1550
-    print(f"Smoothing iteration {hologram.iter}")
-
-    # TODO BUG?  device transfer needs to be accounted for in terms of updates.
-    # phase = hologram.get_phase()
-    phase = hologram.phase
-    phase = smooth_slm_array(phase, sigma=sigma)
-
-    # print(phase.shape, phase.sum())
-    # (1200, 1920) 7310169.0
-    # (1200, 1920) 7303059.5
-    # (1200, 1920) 7302162.5
-    # (1200, 1920) 7304882.5
-    # (1200, 1920) 7285615.0
-    # (1200, 1920) 7286407.5
-    # (1200, 1920) 7283061.0
-    # (1200, 1920) 7274069.5
-
-
-def get_trap_zoom(target_intensity, pad=100):
+def get_trap_zoom(target_intensity, pad=25):
     trap_coords = np.argwhere(target_intensity > 0)
 
     assert trap_coords.shape[0] > 0, "No traps found in target intensity."
@@ -316,7 +296,6 @@ if __name__ == "__main__":
     hologram.optimize(
         method=METHOD,
         maxiter=MAXITER,
-        # callback=smooth_phase_callback,
         stat_groups=["computational_spot"],
         verbose=False,
     )
@@ -358,14 +337,12 @@ if __name__ == "__main__":
     # half = 130
     # ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
 
-    ff_crop = ff_int[y_min:y_max, x_min:x_max]
-
     # extent = [cx - half, cx + half, cy - half, cy + half],
 
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         slm_phase,
-        ff_crop,
+        ff_int[y_min:y_max, x_min:x_max],
         extent,
     )
 
