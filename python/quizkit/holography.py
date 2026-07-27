@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
     initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64)
 
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GS", maxiter=200, smooth_phase=True, smooth_sigma=5)
 
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
