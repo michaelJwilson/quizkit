@@ -13,7 +13,7 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
-# TODO no reproducibility (!) 
+# TODO no reproducibility (!)
 np.random.seed(42)
 
 
@@ -141,7 +141,7 @@ def compute_performance_metrics(ff_int, target_int):
     # NB michelson uniformity = (I_max - I_min) / (I_max + I_min)
     uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
 
-    # NB frac. standard deviation wrt the med. target intensity (no background). 
+    # NB frac. standard deviation wrt the med. target intensity (no background).
     cv = sig_std / (sig_med + 1e-12)
 
     max_bg_intensity = np.max(bg_intensities)
@@ -218,7 +218,13 @@ if __name__ == "__main__":
     METHOD = "GS"  # {GS, WGS}
     MAXITER = 30
 
-    config = {"wavelength": WAVELENGTH, "pixel_pitch": PIXEL_PITCH, "slm_shape": SLM_SHAPE, "ARRAY_SHAPE": ARRAY_SHAPE, "ARRAY_PITCH": ARRAY_PITCH}
+    config = {
+        "wavelength": WAVELENGTH,
+        "pixel_pitch": PIXEL_PITCH,
+        "slm_shape": SLM_SHAPE,
+        "array_shape": ARRAY_SHAPE,
+        "array_pitch": ARRAY_PITCH,
+    }
 
     slm_illumination = get_gaussian_slm_illumination(SLM_SHAPE)
 
