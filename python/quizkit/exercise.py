@@ -3,15 +3,16 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from slmsuite.holography.algorithms import Hologram, SpotHologram
 
-
 """
 GS algorithm application via slm suite, see
 
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
+
 def get_uniform_slm_illumination(slm_shape):
     return np.ones(slm_shape, dtype=np.float32)
+
 
 def get_gaussian_slm_illumination(slm_shape):
     # NB construct source amplitude profile
@@ -35,7 +36,7 @@ def plot_slm_illumination(plot_path, slm_illumination):
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    
+
     fig.colorbar(im, cax=cax, label="slm illumination")
 
     fig.tight_layout()
@@ -43,11 +44,13 @@ def plot_slm_illumination(plot_path, slm_illumination):
 
 
 def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
-    plt.rcParams.update({
-        "font.family": "serif",
-        "axes.titlesize": 14,
-        "figure.titlesize": 16,
-    })
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "axes.titlesize": 14,
+            "figure.titlesize": 16,
+        }
+    )
 
     fig, axs = plt.subplots(1, 2, figsize=(11, 4.5))
 
@@ -55,9 +58,9 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
     axs[0].set_title("slm phase")
     axs[0].set_xlabel("pixel x")
     axs[0].set_ylabel("pixel y")
-    
-    axs[0].set_aspect('equal', adjustable='box')
-    
+
+    axs[0].set_aspect("equal", adjustable="box")
+
     div0 = make_axes_locatable(axs[0])
     cax0 = div0.append_axes("right", size="5%", pad=0.1)
     fig.colorbar(im0, cax=cax0, label="phase [rad]")
@@ -71,16 +74,17 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
     axs[1].set_title("Far-field intensity")
     axs[1].set_xlabel(r"$k_n$ [knm]")
     axs[1].set_ylabel(r"$k_m$ [knm]")
-    
-    axs[1].set_aspect('equal', adjustable='box')
-    
+
+    axs[1].set_aspect("equal", adjustable="box")
+
     div1 = make_axes_locatable(axs[1])
     cax1 = div1.append_axes("right", size="5%", pad=0.1)
     fig.colorbar(im1, cax=cax1, label="intensity")
 
-    fig.tight_layout(pad=2.0) 
+    fig.tight_layout(pad=2.0)
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
 
 def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
@@ -91,7 +95,7 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     max_steering_angle_deg = np.degrees(max_steering_angle)
 
     # NB position in the image plane is k_x * eff. focal length (of a microscope).
-    nyquist_max = wavelength / pixel_pitch / 2.
+    nyquist_max = wavelength / pixel_pitch / 2.0
 
     # print(max_steering_angle_deg)
     # print(slm_fundamental_modes)
@@ -107,7 +111,7 @@ def run_slmsuit_phase_retrieval():
     ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
-    METHOD = "GS" # {GS, WGS}
+    METHOD = "GS"  # {GS, WGS}
     MAXITER = 30
 
     # NB construct source amplitude profile
@@ -122,7 +126,9 @@ def run_slmsuit_phase_retrieval():
     # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
 
     # NB plot Gaussian slm amplitude profile
-    plot_slm_illumination("./results/plots/gaussian_slm_illumination.pdf", slm_illumination)
+    plot_slm_illumination(
+        "./results/plots/gaussian_slm_illumination.pdf", slm_illumination
+    )
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     hologram = SpotHologram.make_rectangular_array(
