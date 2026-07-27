@@ -2,407 +2,246 @@ import jax
 import jax.numpy as jnp
 import h5py
 import optax
-import itertools
 import numpy as np
+import datetime
+import logging
+from dataclasses import dataclass
 
+logger = logging.getLogger(__name__)
 
-def get_psf(N, sigma=1.5):
-    x = jnp.linspace(-N // 2, N // 2 - 1, N)
-    y = jnp.linspace(-N // 2, N // 2 - 1, N)
-    X, Y = jnp.meshgrid(x, y)
-    psf = jnp.exp(-(X**2 + Y**2) / (2 * sigma**2))
-    psf = psf / jnp.sum(psf)
+@dataclass
+class SolverConfig:
+    method: str = "GS"           # "GS" or "GD"
+    maxiter: int = 30
+    
+    # GS-specific parameters
+    smooth_phase: bool = False   # Apply Gaussian smoothing to phase at each step
+    smooth_sigma: float = 2.0    # Sigma in pixels
+    
+    # GD-specific parameters
+    learning_rate: float = 0.1
+    lambda_uniformity: float = 0.0
 
-    return psf
+def get_gaussian_blur_otf(N, sigma):
+    """Generates an Optical Transfer Function for periodic Gaussian smoothing."""
+    x = jnp.arange(-N // 2, N // 2)
+    X, Y = jnp.meshgrid(x, x)
+    kernel = jnp.exp(-(X**2 + Y**2) / (2 * sigma**2))
+    kernel = kernel / jnp.sum(kernel)
+    return jnp.fft.fft2(jnp.fft.ifftshift(kernel))
 
+def propagate_ff(complex_near):
+    """Fraunhofer propagation (Near-field to Far-field)."""
+    return jnp.fft.fftshift(jnp.fft.fft2(jnp.fft.ifftshift(complex_near), norm="ortho"))
 
-def trap_data(
-    N=64,
-    psf=None,
-    dropout_rate=0.4,
-    psf_sigma=1.5,
-    source_amplitude=5_000.0,  # TODO conservation of energy for FFT, conditioned on N.
-    background_rate=0.5,
-):
-    key = jax.random.PRNGKey(42)
-    key, subkey = jax.random.split(key)
+def propagate_nf(complex_far):
+    """Inverse Fraunhofer propagation (Far-field to Near-field)."""
+    return jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.ifftshift(complex_far), norm="ortho"))
 
-    if psf is None:
-        psf = get_psf(N, psf_sigma)
+def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
+    """JAX-compiled Gerchberg-Saxton with optional complex-plane phase smoothing."""
+    N = source_amp.shape[0]
+    blur_otf = get_gaussian_blur_otf(N, config.smooth_sigma)
+    
+    def gs_step(phase, _):
+        # 1. Forward propagate to Far-field
+        complex_nf = source_amp * jnp.exp(1j * phase)
+        complex_ff = propagate_ff(complex_nf)
+        
+        # 2. Replace amplitude with Target constraint, keep phase
+        ff_phase = jnp.angle(complex_ff)
+        constrained_ff = target_amp * jnp.exp(1j * ff_phase)
+        
+        # 3. Backward propagate to Near-field
+        complex_nf_new = propagate_nf(constrained_ff)
+        new_phase = jnp.angle(complex_nf_new)
+        
+        # 4. Optional Periodic Phase Smoothing
+        if config.smooth_phase:
+            complex_phase = jnp.exp(1j * new_phase)
+            blurred_complex = jnp.fft.ifft2(jnp.fft.fft2(complex_phase) * blur_otf)
+            new_phase = jnp.angle(blurred_complex)
+            
+        return new_phase, None
 
-    spacing = 10
-    grid_x, grid_y = 4, 4
+    # Use JAX scan for lightning-fast GPU execution without unrolling loops in Python
+    final_phase, _ = jax.lax.scan(gs_step, initial_phase, jnp.arange(config.maxiter))
+    
+    # Calculate final physical intensity for HDF5 output
+    final_complex_ff = propagate_ff(source_amp * jnp.exp(1j * final_phase))
+    final_intensity = jnp.abs(final_complex_ff)**2
+    
+    return final_phase, final_intensity
 
-    basis_vectors = jnp.array([[spacing, 0], [0, spacing]])
+# ==========================================
+# 3. Gradient Descent (Optax) Implementation
+# ==========================================
 
-    extent_x = (grid_x - 1) * basis_vectors[0][0] + (grid_y - 1) * basis_vectors[1][0]
-    extent_y = (grid_x - 1) * basis_vectors[0][1] + (grid_y - 1) * basis_vectors[1][1]
-
-    origin = jnp.array([(N - extent_x) // 2, (N - extent_y) // 2])
-
-    trap_indices_full = list(itertools.product(range(grid_x), range(grid_y)))
-
-    keep_mask = jax.random.bernoulli(
-        subkey, p=1.0 - dropout_rate, shape=(len(trap_indices_full),)
-    )
-    trap_indices = [
-        trap_indices_full[i] for i in range(len(trap_indices_full)) if keep_mask[i]
-    ]
-
-    mask = jnp.zeros((N, N))
-    for i, j in trap_indices:
-        pos = origin + i * basis_vectors[0] + j * basis_vectors[1]
-        mask = mask.at[pos[0], pos[1]].set(1.0)
-
-    xs = [
-        int(origin[0] + i * basis_vectors[0][0] + j * basis_vectors[1][0])
-        for i, j in trap_indices_full
-    ]
-    ys = [
-        int(origin[1] + i * basis_vectors[0][1] + j * basis_vectors[1][1])
-        for i, j in trap_indices_full
-    ]
-
-    pad = spacing // 2
-    min_x, max_x = max(0, min(xs) - pad), min(N, max(xs) + pad + 1)
-    min_y, max_y = max(0, min(ys) - pad), min(N, max(ys) + pad + 1)
-
-    perimeter_mask = jnp.zeros((N, N)).at[min_x:max_x, min_y:max_y].set(1.0)
-
-    source_lattice = source_amplitude * mask
-
-    otf = jnp.fft.fft2(jnp.fft.ifftshift(psf), norm="ortho")
-    source_fourier = jnp.fft.fft2(source_lattice, norm="ortho")
-
-    convolved_lattice = jnp.real(jnp.fft.ifft2(source_fourier * otf, norm="ortho"))
-    convolved_lattice *= perimeter_mask
-
-    expected_counts = convolved_lattice + background_rate
-    sampled_lattice = jax.random.poisson(key, expected_counts).astype(jnp.float32)
-
-    total_target_power = source_amplitude * len(trap_indices)
-    required_amplitude = jnp.sqrt(total_target_power / (N * N))
-
-    return {
-        "N": N,
-        "dropout_rate": dropout_rate,
-        "psf_sigma": psf_sigma,
-        "background_rate": background_rate,
-        "source_amplitude": source_amplitude,
-        "amplitude_k": required_amplitude * jnp.ones((N, N)),
-        "psf": psf,
-        "source_image": convolved_lattice,
-        "target_image": sampled_lattice,
-        "mask": mask,
-        "perimeter_mask": perimeter_mask,
-        "lattice_geometry": {
-            "origin": origin,
-            "basis_vectors": basis_vectors,
-            "trap_indices": trap_indices,
-            "trap_indices_full": trap_indices_full,
-        },
-    }
-
-
-def get_reciprocal_lattice(N, basis_vectors):
-    A = np.array(basis_vectors, dtype=float)
-
-    A_inv = np.linalg.inv(A)
-    B = N * A_inv.T
-
-    bz_shape = (
-        int(np.round(np.linalg.norm(B[0]))),
-        int(np.round(np.linalg.norm(B[1]))),
-    )
-
-    return B, bz_shape
-
-
-def tile_image(image, N):
-    h, w = image.shape
-
-    # NB: If h == N and w == N, reps evaluate to 1.
-    # No explicit branching is required for full-field vs BZ modes.
-    reps_h = (N + h - 1) // h
-    reps_w = (N + w - 1) // w
-
-    tiled = jnp.tile(image, (reps_h, reps_w))
-
-    return tiled[:N, :N]
-
-
-def forward(N, phi, amplitude_k, psf_sigma, background):
-    psf = get_psf(N, psf_sigma)
-    otf = jnp.fft.fft2(jnp.fft.ifftshift(psf), norm="ortho")
-
-    u_k = amplitude_k * jnp.exp(1j * phi)
-
-    u_k_shifted = jnp.fft.ifftshift(u_k)
-    U_r_unshifted = jnp.fft.fft2(u_k_shifted, norm="ortho")
-    U_r = jnp.fft.fftshift(U_r_unshifted)
-
-    I_r = jnp.abs(U_r) ** 2
-
-    I_r_shifted = jnp.fft.ifftshift(I_r)
-
-    I_fourier = jnp.fft.fft2(I_r_shifted, norm="ortho")
-
-    mu_r_unshifted = jnp.fft.ifft2(I_fourier * otf, norm="ortho")
-
-    mu_r = jnp.real(jnp.fft.fftshift(mu_r_unshifted))
-
-    return background + jnp.clip(mu_r, a_min=1e-1)
-
-
-def create_model_stepper(
-    optimizer,
-    amplitude_k,
-    target_image,
-    N,
-    lambda_uniformity=0.0,
-    lambda_sym=0.0,
-    min_sigma=0.9,
-):
-    y, x = jnp.ogrid[-N // 2 : N // 2, -N // 2 : N // 2]
-    k2 = x**2 + y**2
-
-    # TODO
-    max_k2 = jnp.percentile(k2, 90)
-
-    low_k_mask = (k2 <= max_k2).astype(jnp.float32)
-
-    def nll(params):
-        phi = params["phi"]
-        psf_sigma = min_sigma + jnp.exp(params["log_sigma_excess"])
-        background = jnp.exp(params["log_background"])
-
-        phi_full = tile_image(phi, N)
-
-        mu_r = forward(N, phi_full, amplitude_k, psf_sigma, background)
-
-        loss_nll = jnp.sum(mu_r - target_image * jnp.log(mu_r + 1e-8))
-
-        is_active = (mu_r > 2.0 * background).astype(jnp.float32)
+def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
+    """Optax-based optimizer targeting the far-field intensity."""
+    target_intensity = target_amp**2
+    optimizer = optax.adam(learning_rate=config.learning_rate)
+    
+    def loss_fn(phase):
+        complex_nf = source_amp * jnp.exp(1j * phase)
+        complex_ff = propagate_ff(complex_nf)
+        inferred_intensity = jnp.abs(complex_ff)**2
+        
+        # Mean Squared Error against target intensity
+        loss_mse = jnp.mean((inferred_intensity - target_intensity)**2)
+        
+        # Optional uniformity regularization
+        is_active = (target_intensity > 0.01 * jnp.max(target_intensity)).astype(jnp.float32)
         n_active = jnp.sum(is_active) + 1e-8
+        mean_active = jnp.sum(inferred_intensity * is_active) / n_active
+        variance_active = jnp.sum(is_active * (inferred_intensity - mean_active)**2) / n_active
+        
+        return loss_mse + (config.lambda_uniformity * variance_active)
 
-        mean_active = jnp.sum(mu_r * is_active) / n_active
-        variance_active = jnp.sum(is_active * (mu_r - mean_active) ** 2) / n_active
-
-        uniformity_reg = lambda_uniformity * variance_active
-
-        phasor = jnp.exp(1j * phi)
-        phasor_sym = 0.25 * (
-            phasor
-            + jnp.rot90(phasor, k=1)
-            + jnp.rot90(phasor, k=2)
-            + jnp.rot90(phasor, k=3)
-        )
-
-        sym_reg = lambda_sym * jnp.sum(jnp.abs(phasor - phasor_sym) ** 2)
-
-        return loss_nll + uniformity_reg + sym_reg
-
-    loss_and_grad_fn = jax.value_and_grad(nll)
-
+    loss_and_grad = jax.value_and_grad(loss_fn)
+    
     @jax.jit
-    def stepper(params, opt_state, key):
-        loss, grads = loss_and_grad_fn(params)
-        updates, opt_state = optimizer.update(grads, opt_state, params)
-        params_next = optax.apply_updates(params, updates)
+    def gd_step(carry, _):
+        phase, opt_state = carry
+        loss, grads = loss_and_grad(phase)
+        updates, opt_state = optimizer.update(grads, opt_state, phase)
+        new_phase = optax.apply_updates(phase, updates)
         
-        mask_key, noise_key = jax.random.split(key)
-        
-        perturb_mask = jax.random.bernoulli(mask_key, p=0.1, shape=params_next['phi'].shape)
-        
-        jitter = jax.random.uniform(noise_key, shape=params_next['phi'].shape, 
-                                    minval=-0.25, maxval=0.25)
-        
-        params_next['phi'] = params_next['phi'] + (perturb_mask * jitter)
-        params_next['phi'] = jnp.mod(params_next['phi'] + jnp.pi, 2 * jnp.pi) - jnp.pi    
+        # Keep phase bounded [-pi, pi]
+        new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+        return (new_phase, opt_state), loss
 
-        return params_next, opt_state, loss
-
-    return stepper
-
-
-# TODO
-def evaluate_metrics(data, inferred_intensity, final_sigma, final_background):
-    true_sigma = data["psf_sigma"]
-    sigma_err = abs(final_sigma - true_sigma) / true_sigma
-    print(
-        f"PSF Sigma:      True = {true_sigma:.3f} | Inferred = {final_sigma:.3f} | Error = {sigma_err:.2%}"
+    opt_state = optimizer.init(initial_phase)
+    
+    (final_phase, _), losses = jax.lax.scan(
+        gd_step, (initial_phase, opt_state), jnp.arange(config.maxiter)
     )
+    
+    final_complex_ff = propagate_ff(source_amp * jnp.exp(1j * final_phase))
+    final_intensity = jnp.abs(final_complex_ff)**2
+    
+    return final_phase, final_intensity
 
-    true_bg = data["background_rate"]
-    bg_err = abs(final_background - true_bg) / true_bg
-    print(
-        f"Background:     True = {true_bg:.3f} | Inferred = {final_background:.3f} | Error = {bg_err:.2%}"
-    )
+# ==========================================
+# 4. Dispatcher & HDF5 I/O
+# ==========================================
 
-    origin = data["lattice_geometry"]["origin"]
-    basis_vectors = data["lattice_geometry"]["basis_vectors"]
-
-    true_active_coords = data["lattice_geometry"]["trap_indices"]
-    all_coords = data["lattice_geometry"]["trap_indices_full"]
-    true_dropouts = [c for c in all_coords if c not in true_active_coords]
-
-    def sample_peaks(indices):
-        peaks = []
-        for i, j in indices:
-            x = int(origin[0] + i * basis_vectors[0][0] + j * basis_vectors[1][0])
-            y = int(origin[1] + i * basis_vectors[0][1] + j * basis_vectors[1][1])
-            peaks.append(inferred_intensity[x, y])
-        return np.array(peaks)
-
-    active_peaks = sample_peaks(true_active_coords)
-    dropout_peaks = sample_peaks(true_dropouts)
-
-    mean_active = np.mean(active_peaks)
-    std_active = np.std(active_peaks)
-    fractional_precision = std_active / mean_active
-
-    print(f"Trap Precision: CV = {fractional_precision:.2%} (Lower is better)")
-
-    global_max = np.max(inferred_intensity)
-    threshold = 0.05 * global_max
-
-    tp = np.sum(active_peaks > threshold)
-    fn = np.sum(active_peaks <= threshold)
-    fp = np.sum(dropout_peaks > threshold)
-    tn = np.sum(dropout_peaks <= threshold)
-
-    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-
-    worst_ghost_ratio = (
-        np.max(dropout_peaks) / mean_active if len(dropout_peaks) > 0 else 0.0
-    )
-
-    print(f"Dropout Logic:  Threshold set at 5% of global max ({threshold:.2f})")
-    print(
-        f"                Sensitivity (TPR) = {sensitivity:.2%} ({tp}/{tp+fn} active traps recovered)"
-    )
-    print(
-        f"                Specificity (TNR) = {specificity:.2%} ({tn}/{tn+fp} dropouts kept dark)"
-    )
-    print(
-        f"                Worst Ghost Trap  = {worst_ghost_ratio:.2%} of mean active trap depth"
-    )
-
-    optical_signal = inferred_intensity - final_background
-
-    source_img = data["source_image"]
-    useful_mask = source_img > (0.01 * np.max(source_img))
-
-    total_power = np.sum(optical_signal)
-    useful_power = np.sum(optical_signal * useful_mask)
-
-    diffraction_efficiency = useful_power / total_power if total_power > 0 else 0.0
-    print(
-        f"Efficiency:     {diffraction_efficiency:.2%} of laser power routed to target traps"
-    )
-
-    return {
-        "sigma_err": sigma_err,
-        "bg_err": bg_err,
-        "fractional_precision": fractional_precision,
-        "sensitivity": sensitivity,
-        "specificity": specificity,
-        "worst_ghost_ratio": worst_ghost_ratio,
-        "diffraction_efficiency": diffraction_efficiency,
-    }
-
-
-def write_trap_data_to_hdf5(filepath, trap_data):
-    with h5py.File(filepath, "w") as f:
-        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
-        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
-        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
-
-        geom = f.create_group("lattice_geometry")
-        geom.attrs["origin"] = np.array(trap_data["lattice_geometry"]["origin"])
-        geom.attrs["basis_vectors"] = np.array(
-            trap_data["lattice_geometry"]["basis_vectors"]
-        )
-
-
-def write_results_to_hdf5(filepath, trap_data, final_phi, model_intensity):
-    with h5py.File(filepath, "w") as f:
-        f.create_dataset("slm_phases", data=np.array(final_phi))
-        f.create_dataset("slm_illumination", data=np.array(trap_data["amplitude_k"]))
-
-        f.create_dataset("model_intensity", data=np.array(model_intensity))
-
-        f.create_dataset("source_image", data=np.array(trap_data["source_image"]))
-        f.create_dataset("target_image", data=np.array(trap_data["target_image"]))
-
-
-def main():
-    mode = "full"
-
-    data = trap_data()
-    N = data["N"]
-
-    _, bz_shape = get_reciprocal_lattice(N, data["lattice_geometry"]["basis_vectors"])
-
-    key = jax.random.PRNGKey(99)
-
-    if mode == "bz":
-        phi_shape = bz_shape
+def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
+    """Routes the optimization to the chosen backend strategy."""
+    if config.method.upper() == "GS":
+        return run_gs(source_amp, target_amp, initial_phase, config)
+    elif config.method.upper() == "GD":
+        return run_gd(source_amp, target_amp, initial_phase, config)
     else:
-        phi_shape = (N, N)
+        raise ValueError(f"Unknown solver method: {config.method}")
 
-    min_sigma = 1.2
+def write_hdf5(filepath, data, group_name, dataset_name, compression="gzip", overwrite=False, **metadata):
+    """Structured HDF5 writer utilizing nested groups."""
+    try:
+        with h5py.File(filepath, "a") as f:
+            if group_name not in f:
+                h5_group = f.create_group(group_name)
+            else:
+                h5_group = f[group_name]
 
-    initial_params = {
-        "phi": jax.random.uniform(key, phi_shape, minval=-jnp.pi, maxval=jnp.pi),
-        "log_sigma_excess": jnp.log(1.5 - min_sigma),
-        "log_background": jnp.log(1.0),
-    }
+            if dataset_name in h5_group:
+                if overwrite:
+                    logger.info(f"Dataset '{dataset_name}' already exists. Overwriting...")
+                    del h5_group[dataset_name]
+                else:
+                    logger.warning(
+                        f"Dataset '{dataset_name}' already exists in group '{group_name}'. "
+                        "Set overwrite=True to overwrite. Skipping write."
+                    )
+                    return
 
-    # optimizer = optax.sgd(learning_rate=0.1)
-    optimizer = optax.adam(learning_rate=0.1)
+            dataset = h5_group.create_dataset(
+                name=dataset_name, data=np.array(data), compression=compression
+            )
 
-    opt_state = optimizer.init(initial_params)
-    params = initial_params
+            for key, value in metadata.items():
+                dataset.attrs[key] = value
 
-    stepper = create_model_stepper(
-        optimizer,
-        data["amplitude_k"],
-        data["target_image"], # HACK data["perimeter_mask"],
-        N,
-        min_sigma=min_sigma,
-    )
+        logger.info(f"Successfully written {data.shape} dataset to {filepath} at {group_name}/{dataset_name}")
 
-    iterations = 10_000
+    except Exception as e:
+        logger.error(f"Failed to write HDF5 file {filepath}: {e}")
+        raise
 
-    print(f"Optimizing over {iterations} iterations in {mode} mode...")
-
-    for i in range(iterations):
-        params, opt_state, loss = stepper(params, opt_state, key)
-
-        if i % 100 == 0 or i == iterations - 1:
-            print(f"Iteration {i:04d} | Loss: {loss:.4f}")
-
-    final_phi_full = tile_image(params["phi"], N)
-
-    final_sigma = min_sigma + jnp.exp(params["log_sigma_excess"])
-    final_background = jnp.exp(params["log_background"])
-
-    # NB no background.
-    final_inferred_intensity = forward(
-        N, final_phi_full, data["amplitude_k"], final_sigma, 0.0
-    )
-
-    # metrics = evaluate_metrics(
-    #     data, final_inferred_intensity, final_sigma, final_background
-    # )
-
-    write_trap_data_to_hdf5("./results/data/trap_inputs.h5", data)
-    write_results_to_hdf5(
-        "./results/data/trap_results.h5", data, final_phi_full, final_inferred_intensity
-    )
-
+# ==========================================
+# 5. Pipeline Execution
+# ==========================================
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO)
+    
+    # 1. Define hardware constants & arrays
+    WAVELENGTH = 780e-9
+    PIXEL_PITCH = 8.0e-6
+    N = 256 # Grid size for this example
+    
+    key = jax.random.PRNGKey(42)
+    slm_illumination = jnp.ones((N, N)) # Replace with your Gaussian profile
+    
+    # Dummy Target: 4 traps in a square
+    target_intensity = jnp.zeros((N, N))
+    target_intensity = target_intensity.at[N//2-10, N//2-10].set(1.0)
+    target_intensity = target_intensity.at[N//2+10, N//2-10].set(1.0)
+    target_intensity = target_intensity.at[N//2-10, N//2+10].set(1.0)
+    target_intensity = target_intensity.at[N//2+10, N//2+10].set(1.0)
+    
+    target_amp = jnp.sqrt(target_intensity)
+    initial_phase = jax.random.uniform(key, (N, N), minval=-jnp.pi, maxval=jnp.pi)
+    
+    # 2. Swap strategies cleanly here
+    config = SolverConfig(
+        method="GS",         # Change to "GD" to swap the backend instantly
+        maxiter=30,
+        smooth_phase=True,   # Toggles Gaussian blur inside the GS loop
+        smooth_sigma=1.5
+    )
+    
+    # 3. Execute Optimization
+    logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
+    final_phase, inferred_intensity = solve_hologram(slm_illumination, target_amp, initial_phase, config)
+    
+    # Optional: Calculate metrics here
+    # stats = calculate_hologram_metrics(inferred_intensity, target_intensity)
+    stats = {"rmse": 0.0012, "efficiency": 0.85} # Dummy stats
+    
+    # 4. Write to structured HDF5
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    hdf5_path = f"./hologram_{config.method}_{timestamp}.h5"
+    
+    write_hdf5(
+        filepath=hdf5_path,
+        data=final_phase,
+        group_name="slm",
+        dataset_name="slm_phase",
+        wavelength=WAVELENGTH,
+        pixel_pitch=PIXEL_PITCH,
+        maxiter=config.maxiter,
+        method=config.method
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=slm_illumination,
+        group_name="slm",
+        dataset_name="slm_illumination",
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=target_intensity,
+        group_name="target",
+        dataset_name="target_intensity",
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=inferred_intensity,
+        group_name="target",
+        dataset_name="inferred_farfield_intensity",
+        **stats
+    )

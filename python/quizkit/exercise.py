@@ -218,6 +218,8 @@ if __name__ == "__main__":
     METHOD = "GS"  # {GS, WGS}
     MAXITER = 30
 
+    config = {"wavelength": WAVELENGTH, "pixel_pitch": PIXEL_PITCH, "slm_shape": SLM_SHAPE, "ARRAY_SHAPE": ARRAY_SHAPE, "ARRAY_PITCH": ARRAY_PITCH}
+
     slm_illumination = get_gaussian_slm_illumination(SLM_SHAPE)
 
     # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
@@ -289,6 +291,9 @@ if __name__ == "__main__":
         [cx - half, cx + half, cy - half, cy + half],
     )
 
+    # TODO stats etc.
+    header = config.copy()
+
     # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
@@ -322,7 +327,7 @@ if __name__ == "__main__":
         data=target_intensity,
         group_name="target",
         dataset_name="inferred_farfield_intensity",
-        # **stats
+        **header,
     )
 
 
