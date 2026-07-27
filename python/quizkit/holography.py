@@ -109,7 +109,7 @@ def smooth_phase_regularization(phase):
     
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
-def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=1.e3):
+def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=0.0):
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
