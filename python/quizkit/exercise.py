@@ -1,14 +1,22 @@
-import numpy as np
 import matplotlib.pyplot as plt
-# from matplotlib.colors import LogNorm
+import numpy as np
 from slmsuite.holography.algorithms import SpotHologram
 
-WAVELENGTH = 780e-9        # m
-PIXEL_PITCH = 8.0e-6       # m
-SLM_SHAPE = (1200, 1920)   # (height, width) in pixels
+"""
+GS algorithm application via slm suite, see
 
-# active_h = SLM_SHAPE[0] * PIXEL_PITCH
-# active_w = SLM_SHAPE[1] * PIXEL_PITCH
+https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
+"""
+
+WAVELENGTH = 780e-9  # m
+PIXEL_PITCH = 8.0e-6  # m
+SLM_SHAPE = (1200, 1920)  # (height, width) in pixels
+
+# NB optical tweezer array configuration
+ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
+ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
+
+MAXITER = 30  # GS max. iterations.
 
 x = np.arange(SLM_SHAPE[1]) - (SLM_SHAPE[1] - 1) / 2
 y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
@@ -24,18 +32,14 @@ fig.colorbar(im, ax=ax, label="amplitude")
 fig.tight_layout()
 plt.show()
 
-ARRAY_SHAPE = (10, 10)     # 10 x 10 = 100 spots
-ARRAY_PITCH = (20, 20)     # spot separation in far-field grid samples
-
 hologram = SpotHologram.make_rectangular_array(
     SLM_SHAPE,
     array_shape=ARRAY_SHAPE,
     array_pitch=ARRAY_PITCH,
     basis="knm",
-    amp=source_amp,        # fixed Gaussian illumination
+    amp=source_amp,  # fixed Gaussian illumination
 )
 
-MAXITER = 30
 hologram.optimize(
     method="GS",
     maxiter=MAXITER,
@@ -47,7 +51,7 @@ phase = hologram.get_phase()  # in [0, 2*pi]
 ff_int = np.abs(hologram.get_farfield()) ** 2
 cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
 half = 130
-ff_crop = ff_int[cy - half:cy + half, cx - half:cx + half]
+ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
 
 fig, axs = plt.subplots(1, 2, figsize=(11, 4.5))
 
@@ -59,8 +63,10 @@ fig.colorbar(im0, ax=axs[0], label="phase [rad]")
 
 # Far field on the computational knm grid, centered on the zeroth order.
 im1 = axs[1].imshow(
-    ff_crop, cmap="inferno", origin="lower",
-    extent=[cx - half, cx + half, cy - half, cy + half]
+    ff_crop,
+    cmap="inferno",
+    origin="lower",
+    extent=[cx - half, cx + half, cy - half, cy + half],
 )
 axs[1].set_title("Reconstructed far field")
 axs[1].set_xlabel(r"$k_n$ [knm]")
