@@ -1,6 +1,7 @@
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from quizkit.writers import write_hdf5
 from slmsuite.holography.algorithms import Hologram, SpotHologram
@@ -112,30 +113,45 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # print(slm_fundamental_modes)
     # print(nyquist_max)
 
-def smooth_slm_array(array, sigma=2.0):
+def smooth_slm_array(array, sigma=200):
     # TODO cupy support.
     device_array = np.asarray(array)
 
-    # TODO cv2.GaussianBlur
-    # NB sigma [pixels] - see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
-    return gaussian_filter(device_array, sigma=sigma)
+    # NB sigma [pixels]
+    #    see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    #    see https://shimat.github.io/opencvsharp_docs/html/7b0301d7-322d-a554-8d3f-32fd8ca0ee50.htm
+    # return gaussian_filter(device_array, sigma=sigma)
+    # 
+    # see https://shimat.github.io/opencvsharp_docs/html/040d5c3f-bd31-f5ff-76c8-106304d8135c.htm
+    # return cv2.GaussianBlur(
+    #     device_array, 
+    #     ksize=(0, 0), 
+    #     sigmaX=sigma, 
+    #     sigmaY=sigma
+    # )
+    device_array = np.asarray(array)
+    complex_field = np.exp(1j * device_array)
+            
+    return gaussian_filter(complex_field, sigma=sigma, mode='wrap')
 
-def smooth_phase_callback(hologram, sigma=4):
-    if hologram.iter % 1 == 0:
-        # TODO BUG?  device transfer needs to be accounted for in terms of updates. 
-        # phase = hologram.get_phase()
-        phase = hologram.phase
-        # phase = smooth_slm_array(phase, sigma=sigma)
 
-        print(phase.shape, phase.sum())
-        # (1200, 1920) 7310169.0
-        # (1200, 1920) 7303059.5
-        # (1200, 1920) 7302162.5
-        # (1200, 1920) 7304882.5
-        # (1200, 1920) 7285615.0
-        # (1200, 1920) 7286407.5
-        # (1200, 1920) 7283061.0
-        # (1200, 1920) 7274069.5
+def smooth_phase_callback(hologram, sigma=200):
+    print(f"Smoothing iteration {hologram.iter}")
+
+    # TODO BUG?  device transfer needs to be accounted for in terms of updates. 
+    # phase = hologram.get_phase()
+    phase = hologram.phase
+    phase = smooth_slm_array(phase, sigma=sigma)
+
+    # print(phase.shape, phase.sum())
+    # (1200, 1920) 7310169.0
+    # (1200, 1920) 7303059.5
+    # (1200, 1920) 7302162.5
+    # (1200, 1920) 7304882.5
+    # (1200, 1920) 7285615.0
+    # (1200, 1920) 7286407.5
+    # (1200, 1920) 7283061.0
+    # (1200, 1920) 7274069.5
 
 
 if __name__ == "__main__":
@@ -179,7 +195,7 @@ if __name__ == "__main__":
     hologram.optimize(
         method=METHOD,
         maxiter=MAXITER,
-        callback=smooth_phase,
+        callback=smooth_phase_callback,
         stat_groups=["computational_spot"],
         verbose=False,
     )

@@ -26,6 +26,7 @@ dependencies = [
     "jax",
     "optax",
     "slmsuite",
+    "opencv-python",
 ]
 
 [project.optional-dependencies]
