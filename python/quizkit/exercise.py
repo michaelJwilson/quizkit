@@ -50,7 +50,7 @@ def plot_slm_illumination(plot_path, slm_illumination):
     fig.savefig(plot_path, dpi=300)
 
 
-def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
+def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=None):
     plt.rcParams.update(
         {
             "font.family": "serif",
