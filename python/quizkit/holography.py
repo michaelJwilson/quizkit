@@ -24,7 +24,6 @@ class SolverConfig:
 
 
 def get_gaussian_blur_otf(shape, sigma):
-    """Generates an Optical Transfer Function for periodic Gaussian smoothing on a 2D grid."""
     H, W = shape
 
     x = jnp.arange(-W // 2, W - W // 2)
@@ -35,50 +34,47 @@ def get_gaussian_blur_otf(shape, sigma):
     kernel = jnp.exp(-(X**2 + Y**2) / (2 * sigma**2))
     kernel = kernel / jnp.sum(kernel)
 
+    # NB (inverse) fftshift rearranges quadrants so the "center pixel" is at [0, 0] for fft, with wrapping.
+    #    fft2 computes the 2D Fourier transform.
     return jnp.fft.fft2(jnp.fft.ifftshift(kernel))
 
 
 def propagate_ff(complex_near):
-    """Fraunhofer propagation (Near-field to Far-field)."""
+    # NB norm accounts for the 1/sqrt(N) normalization factor, ensuring energy conservation.
     return jnp.fft.fftshift(jnp.fft.fft2(jnp.fft.ifftshift(complex_near), norm="ortho"))
 
 
 def propagate_nf(complex_far):
-    """Inverse Fraunhofer propagation (Far-field to Near-field)."""
     return jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.ifftshift(complex_far), norm="ortho"))
 
 
 def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
-    """JAX-compiled Gerchberg-Saxton with optional complex-plane phase smoothing."""
-    # Extract the full 2D shape instead of assuming N x N
     slm_shape = source_amp.shape
     blur_otf = get_gaussian_blur_otf(slm_shape, config.smooth_sigma)
 
     def gs_step(phase, _):
-        # 1. Forward propagate to Far-field
         complex_nf = source_amp * jnp.exp(1j * phase)
         complex_ff = propagate_ff(complex_nf)
 
-        # 2. Replace amplitude with Target constraint, keep phase
+        # NB replace amplitude with target constraint, keep current phase.
         ff_phase = jnp.angle(complex_ff)
         constrained_ff = target_amp * jnp.exp(1j * ff_phase)
 
-        # 3. Backward propagate to Near-field
         complex_nf_new = propagate_nf(constrained_ff)
         new_phase = jnp.angle(complex_nf_new)
 
-        # 4. Optional Periodic Phase Smoothing
         if config.smooth_phase:
             complex_phase = jnp.exp(1j * new_phase)
-            blurred_complex = jnp.fft.ifft2(jnp.fft.fft2(complex_phase) * blur_otf)
+
+            # TODO BUG phase must be wrapped for smoothing to work correctly.
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
             new_phase = jnp.angle(blurred_complex)
 
         return new_phase, None
 
-    # Use JAX scan for lightning-fast GPU execution without unrolling loops in Python
+    # NB aid XLA for efficient compilation.
     final_phase, _ = jax.lax.scan(gs_step, initial_phase, jnp.arange(config.maxiter))
 
-    # Calculate final physical intensity for HDF5 output
     final_complex_ff = propagate_ff(source_amp * jnp.exp(1j * final_phase))
     final_intensity = jnp.abs(final_complex_ff) ** 2
 
@@ -86,31 +82,19 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
 
 
 def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
-    """Optax-based optimizer targeting the far-field intensity."""
     target_intensity = target_amp**2
     optimizer = optax.adam(learning_rate=config.learning_rate)
 
-    def loss_fn(phase):
+    def loss(phase):
         complex_nf = source_amp * jnp.exp(1j * phase)
         complex_ff = propagate_ff(complex_nf)
         inferred_intensity = jnp.abs(complex_ff) ** 2
 
-        # Mean Squared Error against target intensity
         loss_mse = jnp.mean((inferred_intensity - target_intensity) ** 2)
 
-        # Optional uniformity regularization
-        is_active = (target_intensity > 0.01 * jnp.max(target_intensity)).astype(
-            jnp.float32
-        )
-        n_active = jnp.sum(is_active) + 1e-8
-        mean_active = jnp.sum(inferred_intensity * is_active) / n_active
-        variance_active = (
-            jnp.sum(is_active * (inferred_intensity - mean_active) ** 2) / n_active
-        )
+        return loss_mse
 
-        return loss_mse + (config.lambda_uniformity * variance_active)
-
-    loss_and_grad = jax.value_and_grad(loss_fn)
+    loss_and_grad = jax.value_and_grad(loss)
 
     @jax.jit
     def gd_step(carry, _):
@@ -119,13 +103,13 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
         updates, opt_state = optimizer.update(grads, opt_state, phase)
         new_phase = optax.apply_updates(phase, updates)
 
-        # Keep phase bounded [-pi, pi]
+        # NB boudn phase
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
         return (new_phase, opt_state), loss
 
     opt_state = optimizer.init(initial_phase)
 
-    (final_phase, _), losses = jax.lax.scan(
+    (final_phase, _), _ = jax.lax.scan(
         gd_step, (initial_phase, opt_state), jnp.arange(config.maxiter)
     )
 
@@ -136,7 +120,6 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
 
 
 def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
-    """Routes the optimization to the chosen backend strategy."""
     if config.method.upper() == "GS":
         return run_gs(source_amp, target_amp, initial_phase, config)
     elif config.method.upper() == "GD":
