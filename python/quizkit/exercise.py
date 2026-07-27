@@ -97,6 +97,9 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # NB O(1) degrees
     max_steering_angle_deg = np.degrees(max_steering_angle)
 
+    farfield_extent = wavelength / pixel_pitch / 2. # radians
+    farfield_resolution = farfield_extent / slm_shape# radians, assumes square slm pixels.
+
     # NB position in the image plane is k_x * eff. focal length (of a microscope).
     nyquist_max = wavelength / pixel_pitch / 2.0
 
