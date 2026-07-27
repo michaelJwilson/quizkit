@@ -103,6 +103,7 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     max_steering_angle_deg = np.degrees(max_steering_angle)
 
     # NB nyquist wavenumber on the image place,
+    #    requires a period of exactly 2 pixels (a phase map of [0,π,0,π])
     farfield_extent = max_steering_angle / 2.0  # radians
     farfield_resolution = (
         farfield_extent / slm_shape
