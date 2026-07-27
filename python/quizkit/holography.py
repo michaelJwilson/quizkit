@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 
 from rich.pretty import pprint
@@ -138,7 +137,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # TODO HARDCODE
-    hdf5_path = "./results/data/exercise_gs_20260727_145747.h5"
+    hdf5_path = "./results/data/exercise_gs_20260727_184334.h5"
 
     slm_illumination, slm_meta = read_hdf5(
         hdf5_path, group_name="slm", dataset_name="slm_illumination"
@@ -148,10 +147,6 @@ if __name__ == "__main__":
         hdf5_path, group_name="target", dataset_name="target_intensity"
     )
 
-    slm_illumination = jnp.array(slm_illumination)
-    target_intensity = jnp.array(target_intensity)
-    target_amp = jnp.sqrt(target_intensity)
-
     WAVELENGTH = target_meta["wavelength"]
     PIXEL_PITCH = target_meta["pixel_pitch"]
 
@@ -159,11 +154,18 @@ if __name__ == "__main__":
     ARRAY_SHAPE = tuple(target_meta["array_shape"])
     ARRAY_PITCH = tuple(target_meta["array_pitch"])
 
+    assert slm_illumination.max() > 0.0
+    assert target_intensity.max() > 0.0
+
+    slm_illumination = jnp.array(slm_illumination)
+    target_intensity = jnp.array(target_intensity)
+    target_amp = jnp.sqrt(target_intensity)
+
     key = jax.random.PRNGKey(42)
 
     initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi)
 
-    config = SolverConfig(method="GS", maxiter=30, smooth_phase=True, smooth_sigma=5)
+    config = SolverConfig(method="GS", maxiter=30, smooth_phase=False, smooth_sigma=5)
 
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         extent,
     )
 
-    logger.info("Optimization complete.")
+    logger.info("Done.")
 
     """
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
