@@ -102,7 +102,7 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # print(nyquist_max)
 
 
-def run_slmsuit_phase_retrieval():
+if __name__ == "__main__":
     WAVELENGTH = 780e-9  # m
     PIXEL_PITCH = 8.0e-6  # m
     SLM_SHAPE = (1200, 1920)  # (height, width) in pixels
@@ -146,21 +146,20 @@ def run_slmsuit_phase_retrieval():
         verbose=False,
     )
 
-    # hologram.plot_nearfield(cbar=True)
+    hologram.plot_nearfield(cbar=True)
 
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
 
-    print("here")
-
     # NB calculated statistics of the spot array uniformity and efficiency
     # hologram.plot_stats()
-
-    exit(0)
-
+    """
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
-    phase = hologram.get_phase()  # in [0, 2*pi]
+    # 
+    # NB current nearfield phase from the GPU shifted to [0, 2*pi].
+    phase = hologram.get_phase()
+
     ff_int = np.abs(hologram.get_farfield()) ** 2
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
     half = 130
@@ -172,11 +171,12 @@ def run_slmsuit_phase_retrieval():
         ff_crop,
         [cx - half, cx + half, cy - half, cy + half],
     )
+    """
 
 
-def main():
-    run_slmsuit_phase_retrieval()
+# def main():
+#     run_slmsuit_phase_retrieval()
 
-
-if __name__ == "__main__":
-    main()
+ 
+# if __name__ == "__main__":
+#     main()
