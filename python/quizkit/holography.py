@@ -6,7 +6,9 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+from rich.pretty import pprint
 from quizkit.readers import read_hdf5
+from quizkit.exercise import compute_performance_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +170,10 @@ if __name__ == "__main__":
     final_phase, inferred_intensity = solve_hologram(
         slm_illumination, target_amp, initial_phase, config
     )
+
+    performance_metrics = compute_performance_metrics(inferred_intensity, target_intensity)
+    
+    pprint(performance_metrics)
 
     logger.info("Optimization complete.")
 
