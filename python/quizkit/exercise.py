@@ -1,7 +1,7 @@
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-import cv2
+from rich.pretty import pprint
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from quizkit.writers import write_hdf5
 from slmsuite.holography.algorithms import Hologram, SpotHologram
@@ -261,6 +261,10 @@ if __name__ == "__main__":
     target_intensity = np.abs(hologram.target) ** 2
 
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
+
+    pprint(performance_metrics)
+
+    exit(0)
 
     # TODO
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
