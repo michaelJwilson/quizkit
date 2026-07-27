@@ -107,47 +107,48 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
         farfield_extent / slm_shape
     )  # radians, assumes square slm pixels.
 
+
 def compute_performance_metrics(ff_int, target_int):
     ff_int = np.asarray(ff_int, dtype=np.float32)
     target_int = np.asarray(target_int, dtype=np.float32)
-    
+
     target_max = np.max(target_int)
-    signal_mask = target_int > (0.01 * target_max) 
+    signal_mask = target_int > (0.01 * target_max)
     bg_mask = ~signal_mask
-    
+
     signal_intensities = ff_int[signal_mask]
     bg_intensities = ff_int[bg_mask]
-    
+
     total_power = np.sum(ff_int)
     signal_power = np.sum(signal_intensities)
     bg_power = np.sum(bg_intensities)
-    
+
     efficiency = signal_power / total_power
     stray_light_fraction = bg_power / total_power
-    
+
     sig_min = np.min(signal_intensities)
     sig_max = np.max(signal_intensities)
     sig_mean = np.mean(signal_intensities)
     sig_std = np.std(signal_intensities)
-    
+
     uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
-    
+
     cv = sig_std / (sig_mean + 1e-12)
-    
+
     max_bg_intensity = np.max(bg_intensities)
     ghost_trap_ratio = max_bg_intensity / (sig_mean + 1e-12)
-    
+
     ff_norm = ff_int / total_power
     target_norm = target_int / np.sum(target_int)
-    rmse = np.sqrt(np.mean((ff_norm - target_norm)**2))
-    
+    rmse = np.sqrt(np.mean((ff_norm - target_norm) ** 2))
+
     return {
         "efficiency": float(efficiency),
         "stray_light_fraction": float(stray_light_fraction),
         "uniformity_michelson": float(uniformity),
         "trap_cv": float(cv),
         "ghost_trap_ratio": float(ghost_trap_ratio),
-        "rmse": float(rmse)
+        "rmse": float(rmse),
     }
 
 
@@ -225,7 +226,7 @@ if __name__ == "__main__":
         amp=slm_illumination,  # fixed Gaussian illumination
     )
 
-    # NB callback definition, 
+    # NB callback definition,
     #    https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1473
     hologram.optimize(
         method=METHOD,
@@ -258,6 +259,8 @@ if __name__ == "__main__":
 
     ff_int = np.abs(hologram.get_farfield()) ** 2
     target_intensity = np.abs(hologram.target) ** 2
+
+    performance_metrics = compute_performance_metrics(ff_int, target_intensity)
 
     # TODO
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
