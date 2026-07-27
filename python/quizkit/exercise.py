@@ -131,6 +131,7 @@ if __name__ == "__main__":
     )
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
+    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
     hologram = SpotHologram.make_rectangular_array(
         SLM_SHAPE,
         array_shape=ARRAY_SHAPE,
@@ -146,13 +147,19 @@ if __name__ == "__main__":
         verbose=False,
     )
 
-    hologram.plot_nearfield(cbar=True)
+    # hologram.plot_nearfield(cbar=True)
+
+    # NB see https://github.com/holodyne/slmsuite/blob/main/slmsuite/holography/algorithms/_stats.py
+    # hologram.stats.keys() == ['method', 'flags', 'stats']
+    # hologram.stats["stats"].keys() == ['computational_spot']
+    # hologram.stats["stats"]["computational_spot"].keys() == ['pkpk_err', 'std_err', 'uniformity', 'efficiency']
+    print(hologram.stats["stats"]["computational_spot"]["uniformity"])
 
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
 
-    # NB calculated statistics of the spot array uniformity and efficiency
-    # hologram.plot_stats()
+    # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
+    hologram.plot_stats(show=True)
     """
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
