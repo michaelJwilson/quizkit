@@ -25,6 +25,7 @@ dependencies = [
     "h5py",
     "jax",
     "optax",
+    "slmsuite",
 ]
 
 [project.optional-dependencies]
