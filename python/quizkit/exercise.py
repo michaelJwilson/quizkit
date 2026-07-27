@@ -114,6 +114,8 @@ def compute_performance_metrics(ff_int, target_int):
     target_int = np.asarray(target_int, dtype=np.float32)
 
     target_max = np.max(target_int)
+
+    # TODO HARDCODE
     signal_mask = target_int > (0.01 * target_max)
     bg_mask = ~signal_mask
 
@@ -121,26 +123,34 @@ def compute_performance_metrics(ff_int, target_int):
     bg_intensities = ff_int[bg_mask]
 
     total_power = np.sum(ff_int)
+
     signal_power = np.sum(signal_intensities)
     bg_power = np.sum(bg_intensities)
 
+    # NB efficiency = fraction of realized power in the target/signal region
     efficiency = signal_power / total_power
+
+    # TODO
     stray_light_fraction = bg_power / total_power
 
     sig_min = np.min(signal_intensities)
     sig_max = np.max(signal_intensities)
-    sig_mean = np.mean(signal_intensities)
+    sig_med = np.median(signal_intensities)
     sig_std = np.std(signal_intensities)
 
+    # NB michelson uniformity = (I_max - I_min) / (I_max + I_min)
     uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
 
-    cv = sig_std / (sig_mean + 1e-12)
+    # NB frac. standard deviation wrt the med. target intensity (no background). 
+    cv = sig_std / (sig_med + 1e-12)
 
     max_bg_intensity = np.max(bg_intensities)
-    ghost_trap_ratio = max_bg_intensity / (sig_mean + 1e-12)
+    ghost_trap_ratio = max_bg_intensity / (sig_med + 1e-12)
 
     ff_norm = ff_int / total_power
     target_norm = target_int / np.sum(target_int)
+
+    # NB root mean square error (RMSE) between normalized far-field and target intensities
     rmse = np.sqrt(np.mean((ff_norm - target_norm) ** 2))
 
     return {
