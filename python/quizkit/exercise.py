@@ -92,16 +92,15 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
 def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
 
+    # NB maximum direction we can redirect the input beam,
     max_steering_angle = wavelength / pixel_pitch
 
     # NB O(1) degrees
     max_steering_angle_deg = np.degrees(max_steering_angle)
 
+    # NB nyquist wavenumber on the image place,
     farfield_extent = wavelength / pixel_pitch / 2. # radians
     farfield_resolution = farfield_extent / slm_shape# radians, assumes square slm pixels.
-
-    # NB position in the image plane is k_x * eff. focal length (of a microscope).
-    nyquist_max = wavelength / pixel_pitch / 2.0
 
     # print(max_steering_angle_deg)
     # print(slm_fundamental_modes)
