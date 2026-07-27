@@ -8,7 +8,11 @@ import optax
 
 from rich.pretty import pprint
 from quizkit.readers import read_hdf5
-from quizkit.exercise import compute_performance_metrics, plot_phase_retrieval_results
+from quizkit.exercise import (
+    compute_performance_metrics,
+    plot_phase_retrieval_results,
+    get_trap_zoom,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +179,14 @@ if __name__ == "__main__":
 
     pprint(performance_metrics)
 
+    extent = get_trap_zoom(target_intensity)
+    x_min, x_max, y_min, y_max = extent
+
     plot_phase_retrieval_results(
-        "./results/plots/phase_retrieval_results.pdf", final_phase, inferred_intensity
+        "./results/plots/phase_retrieval_results.pdf",
+        final_phase,
+        inferred_intensity,
+        extent,
     )
 
     logger.info("Optimization complete.")

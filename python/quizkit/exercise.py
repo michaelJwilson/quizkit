@@ -252,6 +252,17 @@ def smooth_phase_callback(hologram, sigma=200):
     # (1200, 1920) 7274069.5
 
 
+def get_trap_zoom(target_intensity):
+    trap_coords = np.argwhere(target_intensity > 0)
+
+    assert trap_coords.shape[0] > 0, "No traps found in target intensity."
+
+    y_min, y_max = np.min(trap_coords[:, 0]), np.max(trap_coords[:, 0])
+    x_min, x_max = np.min(trap_coords[:, 1]), np.max(trap_coords[:, 1])
+
+    return (x_min, x_max, y_min, y_max)
+
+
 if __name__ == "__main__":
     WAVELENGTH = 780e-9  # m
     PIXEL_PITCH = 8.0e-6  # m
@@ -331,15 +342,22 @@ if __name__ == "__main__":
     pprint(performance_metrics)
 
     # TODO
-    cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
-    half = 130
-    ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
+    extent = get_trap_zoom(target_intensity)
+    x_min, x_max, y_min, y_max = extent
+
+    # cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
+    # half = 130
+    # ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
+
+    ff_crop = ff_int[y_min:y_max, x_min:x_max]
+
+    # extent = [cx - half, cx + half, cy - half, cy + half],
 
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         slm_phase,
         ff_crop,
-        [cx - half, cx + half, cy - half, cy + half],
+        extent,
     )
 
     # TODO stats etc.
