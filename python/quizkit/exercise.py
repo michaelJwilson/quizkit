@@ -10,7 +10,10 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
-def get_gaussian_source_amplitude(slm_shape):
+def get_uniform_slm_illumination(slm_shape):
+    return np.ones(slm_shape, dtype=np.float32)
+
+def get_gaussian_slm_illumination(slm_shape):
     # NB construct source amplitude profile
     x = np.arange(slm_shape[1]) - (slm_shape[1] - 1) / 2
     y = np.arange(slm_shape[0]) - (slm_shape[0] - 1) / 2
@@ -23,9 +26,9 @@ def get_gaussian_source_amplitude(slm_shape):
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
 
-def plot_source_amplitude(plot_path, source_amp):
+def plot_slm_illumination(plot_path, slm_illumination):
     fig, ax = plt.subplots(figsize=(5, 3.2))
-    im = ax.imshow(source_amp, cmap="inferno")
+    im = ax.imshow(slm_illumination, cmap="inferno")
     ax.set_aspect("equal")  # show that the beam is symmetric
 
     # fig.colorbar(im, ax=ax, label="slm illumination")
@@ -115,14 +118,14 @@ def run_slmsuit_phase_retrieval():
     # y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
     # xx, yy = np.meshgrid(x, y)
     # beam_waist_px = 0.35 * min(SLM_SHAPE)  # 1/e^2 amplitude radius, in pixels
-    # source_amp = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
+    # slm_illumination = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
-    source_amp = get_gaussian_source_amplitude(SLM_SHAPE)
+    slm_illumination = get_gaussian_slm_illumination(SLM_SHAPE)
 
     # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
 
     # NB plot Gaussian slm amplitude profile
-    plot_source_amplitude("./results/plots/gaussian_source_amplitude.pdf", source_amp)
+    plot_slm_illumination("./results/plots/gaussian_slm_illumination.pdf", slm_illumination)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     hologram = SpotHologram.make_rectangular_array(
@@ -130,7 +133,7 @@ def run_slmsuit_phase_retrieval():
         array_shape=ARRAY_SHAPE,
         array_pitch=ARRAY_PITCH,
         basis="knm",  # pixel coordinates in the far-field image plane
-        amp=source_amp,  # fixed Gaussian illumination
+        amp=slm_illumination,  # fixed Gaussian illumination
     )
 
     hologram.optimize(
