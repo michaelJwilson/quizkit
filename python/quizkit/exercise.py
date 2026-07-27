@@ -114,10 +114,10 @@ def compute_performance_metrics(ff_int, target_int):
     ff_int = np.asarray(ff_int, dtype=np.float32)
     target_int = np.asarray(target_int, dtype=np.float32)
 
-    # NB max target intensity; 
+    # NB max target intensity;
     target_max = np.max(target_int)
 
-    # TODO HARDCODE 
+    # TODO HARDCODE
     signal_mask = target_int > (0.01 * target_max)
     signal_mask = target_int > 0.0
 
@@ -159,10 +159,10 @@ def compute_performance_metrics(ff_int, target_int):
 
     ff_centered = ff_int - np.mean(ff_int)
     target_centered = target_int - np.mean(target_int)
-    
+
     numerator = np.sum(ff_centered * target_centered)
     denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
-    
+
     pearson = numerator / (denominator + 1e-12)
 
     return {
@@ -174,15 +174,16 @@ def compute_performance_metrics(ff_int, target_int):
         "pearson": float(pearson),
     }
 
+
 def write_metrics_table(filepath: str, metrics: dict) -> str:
     num_cols = len(metrics)
     col_alignment = "l" * num_cols
-    
+
     headers = [f"\\textbf{{{k.replace('_', '\\_')}}}" for k in metrics.keys()]
     header_row = " & ".join(headers) + " \\\\"
-    
+
     type_row = " & ".join(["\\texttt{float}"] * num_cols) + " \\\\"
-    
+
     values = [f"{v:.4f}" for v in metrics.values()]
     value_row = " & ".join(values) + " \\\\"
 

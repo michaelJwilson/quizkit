@@ -44,15 +44,29 @@ def plot_holography(hdf5_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate holography plots from saved HDF5 data.")
-    parser.add_argument("--traps_path", type=str, required=True, help="Path to the input trap data HDF5")
-    parser.add_argument("--results_path", type=str, required=True, help="Path to the optimized results HDF5")
-    parser.add_argument("--output_path", type=str, required=True, help="Path to save the output plot (e.g., holography.pdf)")
-    
+    parser = argparse.ArgumentParser(
+        description="Generate holography plots from saved HDF5 data."
+    )
+    parser.add_argument(
+        "--traps_path", type=str, required=True, help="Path to the input trap data HDF5"
+    )
+    parser.add_argument(
+        "--results_path",
+        type=str,
+        required=True,
+        help="Path to the optimized results HDF5",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        required=True,
+        help="Path to save the output plot (e.g., holography.pdf)",
+    )
+
     args = parser.parse_args()
 
     fig, _ = plot_holography(args.results_path)
-    
+
     fig.savefig(args.output_path, dpi=300, bbox_inches="tight")
 
 
