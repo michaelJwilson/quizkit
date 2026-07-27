@@ -288,7 +288,7 @@ if __name__ == "__main__":
         array_pitch=ARRAY_PITCH,
         basis="knm",  # pixel coordinates in the far-field image plane
         amp=slm_illumination,  # fixed Gaussian illumination
-        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE), # reproducibility required.
+        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE),  # reproducibility required.
     )
 
     # NB callback definition,

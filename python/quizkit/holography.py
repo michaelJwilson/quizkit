@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 
 import jax
+
 # Enable 64-bit precision globally (float64 / complex128)
 jax.config.update("jax_enable_x64", True)
 
@@ -105,7 +106,7 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
 
-    target_intensity_native = target_amp_native ** 2
+    target_intensity_native = target_amp_native**2
     optimizer = optax.adam(learning_rate=config.learning_rate)
 
     def loss(phase):
@@ -114,7 +115,9 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
         inferred_intensity = jnp.abs(complex_ff) ** 2
 
         norm_inferred = inferred_intensity / (jnp.mean(inferred_intensity) + 1e-12)
-        norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
+        norm_target = target_intensity_native / (
+            jnp.mean(target_intensity_native) + 1e-12
+        )
 
         loss = jnp.mean(jnp.abs(norm_inferred - norm_target))
 
@@ -176,10 +179,10 @@ if __name__ == "__main__":
         hdf5_path, group_name="target", dataset_name="target_intensity"
     )
 
-    WAVELENGTH = target_meta["wavelength"] # m
-    PIXEL_PITCH = target_meta["pixel_pitch"] # m
+    WAVELENGTH = target_meta["wavelength"]  # m
+    PIXEL_PITCH = target_meta["pixel_pitch"]  # m
 
-    SLM_SHAPE = tuple(target_meta["slm_shape"]) # (height, width) in pixels
+    SLM_SHAPE = tuple(target_meta["slm_shape"])  # (height, width) in pixels
 
     # NB e.g. 10x10 optical tweezer array sampling a 200x200 image.
     ARRAY_SHAPE = tuple(target_meta["array_shape"])
@@ -195,7 +198,9 @@ if __name__ == "__main__":
 
     key = jax.random.PRNGKey(42)
 
-    initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64)
+    initial_phase = jax.random.uniform(
+        key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
+    )
 
     config = SolverConfig(method="GS", maxiter=200, smooth_phase=True, smooth_sigma=5)
 
