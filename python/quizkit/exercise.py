@@ -67,6 +67,23 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
+def compute_metrics(wavelength, pixel_pitch, slm_shape):
+    max_steering_angle = wavelength / pixel_pitch
+
+    # NB O(1) degrees
+    max_steering_angle_deg = np.degrees(max_steering_angle)
+
+    # NB dk_x = 1/L is goverened by the diffraction limit
+    slm_aperture_extent = np.array(slm_shape) * pixel_pitch
+    slm_fundamental_modes = 2. * np.pi / slm_aperture_extent
+
+    # NB position in the image plane is k_x * eff. focal length (of a microscope).
+    nyquist_max = wavelength / pixel_pitch / 2.
+
+    # print(max_steering_angle_deg)
+    # print(slm_fundamental_modes)
+    print(nyquist_max)
+
 
 def main():
     WAVELENGTH = 780e-9  # m
@@ -88,8 +105,10 @@ def main():
     beam_waist_px = 0.35 * min(SLM_SHAPE)  # 1/e^2 amplitude radius, in pixels
     source_amp = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
+    # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
+
     # NB plot Gaussian slm amplitude profile
-    plot_source_amplitude("./results/plots/gaussian_source_amplitude.pdf", source_amp)
+    # plot_source_amplitude("./results/plots/gaussian_source_amplitude.pdf", source_amp)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     hologram = SpotHologram.make_rectangular_array(
@@ -115,13 +134,14 @@ def main():
     half = 130
     ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
 
+    """
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         phase,
         ff_crop,
         [cx - half, cx + half, cy - half, cy + half],
     )
-
+    """
 
 if __name__ == "__main__":
     main()
