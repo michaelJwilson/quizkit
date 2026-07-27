@@ -75,7 +75,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     fig.colorbar(im0, cax=cax0, label="phase [rad]")
 
     im1 = axs[1].imshow(
-        intensity,
+        intensity / intensity.max(),
         cmap="inferno",
         origin="lower",
         extent=intensity_extent,
@@ -89,7 +89,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
 
     div1 = make_axes_locatable(axs[1])
     cax1 = div1.append_axes("right", size="5%", pad=0.1)
-    fig.colorbar(im1, cax=cax1, label="intensity")
+    fig.colorbar(im1, cax=cax1, label="intensity [a.u.]")
 
     fig.tight_layout(pad=2.0)
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
