@@ -66,7 +66,8 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     axs[0].set_xlabel("pixel x")
     axs[0].set_ylabel("pixel y")
 
-    axs[0].set_aspect("equal", adjustable="box")
+    # adjustable="box"
+    # axs[0].set_aspect("equal")
 
     div0 = make_axes_locatable(axs[0])
     cax0 = div0.append_axes("right", size="5%", pad=0.1)
@@ -82,7 +83,8 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     axs[1].set_xlabel(r"$k_n$ [knm]")
     axs[1].set_ylabel(r"$k_m$ [knm]")
 
-    axs[1].set_aspect("equal", adjustable="box")
+    # adjustable="box"
+    axs[1].set_aspect("equal")
 
     div1 = make_axes_locatable(axs[1])
     cax1 = div1.append_axes("right", size="5%", pad=0.1)
@@ -252,13 +254,18 @@ def smooth_phase_callback(hologram, sigma=200):
     # (1200, 1920) 7274069.5
 
 
-def get_trap_zoom(target_intensity):
+def get_trap_zoom(target_intensity, pad=100):
     trap_coords = np.argwhere(target_intensity > 0)
 
     assert trap_coords.shape[0] > 0, "No traps found in target intensity."
 
     y_min, y_max = np.min(trap_coords[:, 0]), np.max(trap_coords[:, 0])
     x_min, x_max = np.min(trap_coords[:, 1]), np.max(trap_coords[:, 1])
+
+    y_min = max(0, y_min - pad)
+    y_max = min(target_intensity.shape[0] - 1, y_max + pad)
+    x_min = max(0, x_min - pad)
+    x_max = min(target_intensity.shape[1] - 1, x_max + pad)
 
     return (x_min, x_max, y_min, y_max)
 
