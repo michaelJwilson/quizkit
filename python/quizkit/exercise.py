@@ -10,6 +10,18 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
+def get_gaussian_source_amplitude(slm_shape):
+    # NB construct source amplitude profile
+    x = np.arange(slm_shape[1]) - (slm_shape[1] - 1) / 2
+    y = np.arange(slm_shape[0]) - (slm_shape[0] - 1) / 2
+
+    xx, yy = np.meshgrid(x, y)
+
+    # TODO HARDCODE
+    beam_waist_px = 0.35 * min(slm_shape)  # 1/e^2 amplitude radius, in pixels
+
+    return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
+
 
 def plot_source_amplitude(plot_path, source_amp):
     fig, ax = plt.subplots(figsize=(5, 3.2))
@@ -99,16 +111,18 @@ def run_slmsuit_phase_retrieval():
     MAXITER = 30
 
     # NB construct source amplitude profile
-    x = np.arange(SLM_SHAPE[1]) - (SLM_SHAPE[1] - 1) / 2
-    y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
-    xx, yy = np.meshgrid(x, y)
-    beam_waist_px = 0.35 * min(SLM_SHAPE)  # 1/e^2 amplitude radius, in pixels
-    source_amp = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
+    # x = np.arange(SLM_SHAPE[1]) - (SLM_SHAPE[1] - 1) / 2
+    # y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
+    # xx, yy = np.meshgrid(x, y)
+    # beam_waist_px = 0.35 * min(SLM_SHAPE)  # 1/e^2 amplitude radius, in pixels
+    # source_amp = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
+
+    source_amp = get_gaussian_source_amplitude(SLM_SHAPE)
 
     # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
 
     # NB plot Gaussian slm amplitude profile
-    # plot_source_amplitude("./results/plots/gaussian_source_amplitude.pdf", source_amp)
+    plot_source_amplitude("./results/plots/gaussian_source_amplitude.pdf", source_amp)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     hologram = SpotHologram.make_rectangular_array(
@@ -126,13 +140,10 @@ def run_slmsuit_phase_retrieval():
         verbose=False,
     )
 
-    hologram.plot_nearfield(cbar=True)
+    # hologram.plot_nearfield(cbar=True)
 
     # limits=zoombox
-    hologram.plot_farfield(cbar=True, title='FF Amp');
-
-    exit(0)
-
+    # hologram.plot_farfield(cbar=True, title='FF Amp');
 
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
@@ -142,14 +153,13 @@ def run_slmsuit_phase_retrieval():
     half = 130
     ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
 
-    """
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         phase,
         ff_crop,
         [cx - half, cx + half, cy - half, cy + half],
     )
-    """
+
 
 def main():
     run_slmsuit_phase_retrieval()
