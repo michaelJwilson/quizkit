@@ -139,23 +139,23 @@ def compute_performance_metrics(ff_int, target_int):
 
     sig_min = np.min(signal_intensities)
     sig_max = np.max(signal_intensities)
-    sig_med = np.median(signal_intensities)
-    sig_std = np.std(signal_intensities)
+
+    sig_constrast = sig_max / (sig_min + 1e-12)
 
     # NB michelson uniformity = (I_max - I_min) / (I_max + I_min) = 0.5 * (max - min) / mean
     uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
 
     # NB frac. standard deviation wrt the med. target intensity (no background).
-    cv = sig_std / (sig_med + 1e-12)
+    # cv = sig_std / (sig_med + 1e-12)
 
     max_bg_intensity = np.max(bg_intensities)
-    ghost_trap_ratio = max_bg_intensity / (sig_med + 1e-12)
+    ghost_trap_ratio = max_bg_intensity / (sig_max + 1e-12)
 
-    ff_norm = ff_int / total_power
-    target_norm = target_int / np.sum(target_int)
+    # ff_norm = ff_int / total_power
+    # target_norm = target_int / np.sum(target_int)
 
     # NB root mean square error (RMSE) between normalized far-field and target intensities
-    rmse = np.sqrt(np.mean((ff_norm - target_norm) ** 2))
+    # rmse = np.sqrt(np.mean((ff_norm - target_norm) ** 2))
 
     ff_centered = ff_int - np.mean(ff_int)
     target_centered = target_int - np.mean(target_int)
@@ -168,33 +168,33 @@ def compute_performance_metrics(ff_int, target_int):
     return {
         "efficiency": float(efficiency),
         "stray_light_fraction": float(stray_light_fraction),
-        "uniformity_michelson": float(uniformity),
-        "trap_cv": float(cv),
+        "sig_constrast": float(sig_constrast),
+        "uniformity": float(uniformity),
         "ghost_trap_ratio": float(ghost_trap_ratio),
-        "rmse": float(rmse),
         "pearson": float(pearson),
     }
 
 def write_metrics_table(filepath: str, metrics: dict) -> str:
-    eff = f"{metrics['efficiency']:.4f}"
-    stray = f"{metrics['stray_light_fraction']:.4f}"
-    uni = f"{metrics['uniformity_michelson']:.4f}"
-    cv = f"{metrics['trap_cv']:.4f}"
-    ghost = f"{metrics['ghost_trap_ratio']:.4f}"
-    rmse = f"{metrics['rmse']:.2e}"
-    pearson = f"{metrics['pearson']:.4f}"
+    num_cols = len(metrics)
+    col_alignment = "l" * num_cols
+    
+    headers = [f"\\textbf{{{k.replace('_', '\\_')}}}" for k in metrics.keys()]
+    header_row = " & ".join(headers) + " \\\\"
+    
+    type_row = " & ".join(["\\texttt{float}"] * num_cols) + " \\\\"
+    
+    values = [f"{v:.4f}" for v in metrics.values()]
+    value_row = " & ".join(values) + " \\\\"
 
-    # Use double brackets {{ }} to escape literal braces in Python f-strings
-    latex_string = f"""\
-\\begin{{table}}[htbp]
+    latex_string = f"""\\begin{{table}}[htbp]
 \\centering
 \\small
-\\begin{{tabular}}{{lllllll}}
+\\begin{{tabular}}{{{col_alignment}}}
 \\toprule
-\\textbf{{efficiency}} & \\textbf{{stray\\_light\\_fraction}} & \\textbf{{uniformity}} & \\textbf{{trap\\_cv}} & \\textbf{{ghost\\_trap\\_ratio}} & \\textbf{{rmse}} & \\textbf{{pearson}} \\\\
-\\texttt{{float}} & \\texttt{{float}} & \\texttt{{float}} & \\texttt{{float}} & \\texttt{{float}} & \\texttt{{float}} & \\texttt{{float}} \\\\
+{header_row}
+{type_row}
 \\midrule
-{eff} & {stray} & {uni} & {cv} & {ghost} & {rmse} & {pearson} \\\\
+{value_row}
 \\bottomrule
 \\end{{tabular}}
 \\caption{{Computed performance metrics for the optimized SLM phase mask.}}
