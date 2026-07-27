@@ -174,10 +174,12 @@ if __name__ == "__main__":
         hdf5_path, group_name="target", dataset_name="target_intensity"
     )
 
-    WAVELENGTH = target_meta["wavelength"]
-    PIXEL_PITCH = target_meta["pixel_pitch"]
+    WAVELENGTH = target_meta["wavelength"] # m
+    PIXEL_PITCH = target_meta["pixel_pitch"] # m
 
-    SLM_SHAPE = tuple(target_meta["slm_shape"])
+    SLM_SHAPE = tuple(target_meta["slm_shape"]) # (height, width) in pixels
+
+    # NB e.g. 10x10 optical tweezer array sampling a 200x200 image.
     ARRAY_SHAPE = tuple(target_meta["array_shape"])
     ARRAY_PITCH = tuple(target_meta["array_pitch"])
 
