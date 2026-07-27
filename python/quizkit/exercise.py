@@ -11,6 +11,7 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
+np.random.seed(42)
 
 def get_uniform_slm_illumination(slm_shape):
     return np.ones(slm_shape, dtype=np.float32)
@@ -185,6 +186,7 @@ if __name__ == "__main__":
         [cx - half, cx + half, cy - half, cy + half],
     )
 
+    # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
     
