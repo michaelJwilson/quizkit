@@ -160,7 +160,7 @@ if __name__ == "__main__":
     initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi)
 
     config = SolverConfig(
-        method="GS", maxiter=30, smooth_phase=True, smooth_sigma=100
+        method="GS", maxiter=30, smooth_phase=True, smooth_sigma=5
     )
 
     logger.info(
