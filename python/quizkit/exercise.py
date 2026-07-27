@@ -107,6 +107,49 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
         farfield_extent / slm_shape
     )  # radians, assumes square slm pixels.
 
+def compute_performance_metrics(ff_int, target_int):
+    ff_int = np.asarray(ff_int, dtype=np.float32)
+    target_int = np.asarray(target_int, dtype=np.float32)
+    
+    target_max = np.max(target_int)
+    signal_mask = target_int > (0.01 * target_max) 
+    bg_mask = ~signal_mask
+    
+    signal_intensities = ff_int[signal_mask]
+    bg_intensities = ff_int[bg_mask]
+    
+    total_power = np.sum(ff_int)
+    signal_power = np.sum(signal_intensities)
+    bg_power = np.sum(bg_intensities)
+    
+    efficiency = signal_power / total_power
+    stray_light_fraction = bg_power / total_power
+    
+    sig_min = np.min(signal_intensities)
+    sig_max = np.max(signal_intensities)
+    sig_mean = np.mean(signal_intensities)
+    sig_std = np.std(signal_intensities)
+    
+    uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
+    
+    cv = sig_std / (sig_mean + 1e-12)
+    
+    max_bg_intensity = np.max(bg_intensities)
+    ghost_trap_ratio = max_bg_intensity / (sig_mean + 1e-12)
+    
+    ff_norm = ff_int / total_power
+    target_norm = target_int / np.sum(target_int)
+    rmse = np.sqrt(np.mean((ff_norm - target_norm)**2))
+    
+    return {
+        "efficiency": float(efficiency),
+        "stray_light_fraction": float(stray_light_fraction),
+        "uniformity_michelson": float(uniformity),
+        "trap_cv": float(cv),
+        "ghost_trap_ratio": float(ghost_trap_ratio),
+        "rmse": float(rmse)
+    }
+
 
 def smooth_slm_array(array, sigma=200):
     # TODO cupy support.
@@ -132,6 +175,7 @@ def smooth_slm_array(array, sigma=200):
 
 
 def smooth_phase_callback(hologram, sigma=200):
+    # TODO see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1550
     print(f"Smoothing iteration {hologram.iter}")
 
     # TODO BUG?  device transfer needs to be accounted for in terms of updates.
@@ -162,13 +206,6 @@ if __name__ == "__main__":
     METHOD = "GS"  # {GS, WGS}
     MAXITER = 30
 
-    # NB construct source amplitude profile
-    # x = np.arange(SLM_SHAPE[1]) - (SLM_SHAPE[1] - 1) / 2
-    # y = np.arange(SLM_SHAPE[0]) - (SLM_SHAPE[0] - 1) / 2
-    # xx, yy = np.meshgrid(x, y)
-    # beam_waist_px = 0.35 * min(SLM_SHAPE)  # 1/e^2 amplitude radius, in pixels
-    # slm_illumination = np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
-
     slm_illumination = get_gaussian_slm_illumination(SLM_SHAPE)
 
     # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
@@ -188,10 +225,12 @@ if __name__ == "__main__":
         amp=slm_illumination,  # fixed Gaussian illumination
     )
 
+    # NB callback definition, 
+    #    https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1473
     hologram.optimize(
         method=METHOD,
         maxiter=MAXITER,
-        callback=smooth_phase_callback,
+        # callback=smooth_phase_callback,
         stat_groups=["computational_spot"],
         verbose=False,
     )
