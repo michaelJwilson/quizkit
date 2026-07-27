@@ -13,6 +13,7 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
+# TODO no reproducibility (!) 
 np.random.seed(42)
 
 
