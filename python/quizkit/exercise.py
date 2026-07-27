@@ -104,6 +104,21 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # print(slm_fundamental_modes)
     # print(nyquist_max)
 
+def smooth_phase(hologram):
+    if hologram.iter % 1 == 0:
+        # TODO BUG?  device transfer needs to be accounted for in terms of updates. 
+        phase = hologram.get_phase()
+
+        # print(phase.shape, phase.sum())
+        # (1200, 1920) 7310169.0
+        # (1200, 1920) 7303059.5
+        # (1200, 1920) 7302162.5
+        # (1200, 1920) 7304882.5
+        # (1200, 1920) 7285615.0
+        # (1200, 1920) 7286407.5
+        # (1200, 1920) 7283061.0
+        # (1200, 1920) 7274069.5
+
 
 if __name__ == "__main__":
     WAVELENGTH = 780e-9  # m
@@ -146,6 +161,7 @@ if __name__ == "__main__":
     hologram.optimize(
         method=METHOD,
         maxiter=MAXITER,
+        callback=smooth_phase,
         stat_groups=["computational_spot"],
         verbose=False,
     )
