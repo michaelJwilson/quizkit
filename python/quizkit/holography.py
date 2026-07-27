@@ -113,9 +113,12 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
         complex_ff = propagate_ff_native(complex_nf)
         inferred_intensity = jnp.abs(complex_ff) ** 2
 
-        loss_mse = jnp.mean((inferred_intensity - target_intensity_native) ** 2)
+        norm_inferred = inferred_intensity / (jnp.mean(inferred_intensity) + 1e-12)
+        norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
 
-        return loss_mse
+        loss = jnp.mean(jnp.abs(norm_inferred - norm_target))
+
+        return loss
 
     loss_and_grad = jax.value_and_grad(loss)
 
@@ -194,7 +197,7 @@ if __name__ == "__main__":
 
     initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64)
 
-    config = SolverConfig(method="GD", maxiter=1_000, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
 
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
