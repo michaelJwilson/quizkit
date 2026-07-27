@@ -78,7 +78,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
         origin="lower",
         extent=intensity_extent,
     )
-    axs[1].set_title("Far-field intensity")
+    axs[1].set_title("far-field intensity")
     axs[1].set_xlabel(r"$k_n$ [knm]")
     axs[1].set_ylabel(r"$k_m$ [knm]")
 
