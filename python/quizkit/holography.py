@@ -5,7 +5,9 @@ import optax
 import numpy as np
 import datetime
 import logging
+from quizkit.readers import read_hdf5
 from dataclasses import dataclass
+
 
 logger = logging.getLogger(__name__)
 
@@ -135,68 +137,36 @@ def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
     else:
         raise ValueError(f"Unknown solver method: {config.method}")
 
-def write_hdf5(filepath, data, group_name, dataset_name, compression="gzip", overwrite=False, **metadata):
-    """Structured HDF5 writer utilizing nested groups."""
-    try:
-        with h5py.File(filepath, "a") as f:
-            if group_name not in f:
-                h5_group = f.create_group(group_name)
-            else:
-                h5_group = f[group_name]
-
-            if dataset_name in h5_group:
-                if overwrite:
-                    logger.info(f"Dataset '{dataset_name}' already exists. Overwriting...")
-                    del h5_group[dataset_name]
-                else:
-                    logger.warning(
-                        f"Dataset '{dataset_name}' already exists in group '{group_name}'. "
-                        "Set overwrite=True to overwrite. Skipping write."
-                    )
-                    return
-
-            dataset = h5_group.create_dataset(
-                name=dataset_name, data=np.array(data), compression=compression
-            )
-
-            for key, value in metadata.items():
-                dataset.attrs[key] = value
-
-        logger.info(f"Successfully written {data.shape} dataset to {filepath} at {group_name}/{dataset_name}")
-
-    except Exception as e:
-        logger.error(f"Failed to write HDF5 file {filepath}: {e}")
-        raise
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
+    # TODO
+    hdf5_path = "./results/data/exercise_gs_20260727_143546.h5"
 
+    slm_illumination = read_hdf5(hdf5_path, group_name="slm", dataset_name="slm_illumination")
 
-    exit(0)
-    
-    # 1. Define hardware constants & arrays
-    WAVELENGTH = 780e-9
-    PIXEL_PITCH = 8.0e-6
-    N = 256 # Grid size for this example
-    
-    key = jax.random.PRNGKey(42)
-    slm_illumination = jnp.ones((N, N)) 
-    
-    target_intensity = jnp.zeros((N, N))
-    target_intensity = target_intensity.at[N//2-10, N//2-10].set(1.0)
-    target_intensity = target_intensity.at[N//2+10, N//2-10].set(1.0)
-    target_intensity = target_intensity.at[N//2-10, N//2+10].set(1.0)
-    target_intensity = target_intensity.at[N//2+10, N//2+10].set(1.0)
-    
+    target_intensity, target_meta = read_hdf5(hdf5_path, group_name="target", dataset_name="target_intensity")
     target_amp = jnp.sqrt(target_intensity)
-    initial_phase = jax.random.uniform(key, (N, N), minval=-jnp.pi, maxval=jnp.pi)
+
+    # TODO unpack target_meta to WAVELENGTH, etc.
+    WAVELENGTH = target_meta["wavelength"]
+
+    PIXEL_PITCH = target_meta["pixel_pitch"]
+    SLM_SHAPE = target_meta["slm_shape"]
+
+    ARRAY_SHAPE = target_meta["array_shape"]
+    ARRAY_PITCH = target_meta["array_pitch"]
+
+
+    key = jax.random.PRNGKey(42)
+        
+    initial_phase = jax.random.uniform(key, (SLM_SHAPE[0], SLM_SHAPE[1]), minval=-jnp.pi, maxval=jnp.pi)
     
     config = SolverConfig(
         method="GS",         # {"GS", "GD"}
         maxiter=30,
-        smooth_phase=True,   # Toggles Gaussian blur inside the GS loop
+        smooth_phase=False,   # Toggles Gaussian blur inside the GS loop
         smooth_sigma=1.5
     )
     
@@ -204,14 +174,10 @@ if __name__ == "__main__":
 
     final_phase, inferred_intensity = solve_hologram(slm_illumination, target_amp, initial_phase, config)
     
-    # Optional: Calculate metrics here
-    # stats = calculate_hologram_metrics(inferred_intensity, target_intensity)
-    stats = {"rmse": 0.0012, "efficiency": 0.85} # Dummy stats
-    
-    # 4. Write to structured HDF5
+    """
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./hologram_{config.method}_{timestamp}.h5"
-    
+
     write_hdf5(
         filepath=hdf5_path,
         data=final_phase,
@@ -244,3 +210,4 @@ if __name__ == "__main__":
         dataset_name="inferred_farfield_intensity",
         **stats
     )
+    """
