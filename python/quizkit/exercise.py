@@ -1,6 +1,8 @@
+import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from quizkit.writers import write_hdf5
 from slmsuite.holography.algorithms import Hologram, SpotHologram
 
 """
@@ -153,14 +155,14 @@ if __name__ == "__main__":
     # hologram.stats.keys() == ['method', 'flags', 'stats']
     # hologram.stats["stats"].keys() == ['computational_spot']
     # hologram.stats["stats"]["computational_spot"].keys() == ['pkpk_err', 'std_err', 'uniformity', 'efficiency']
-    print(hologram.stats["stats"]["computational_spot"]["uniformity"])
+    stats = hologram.stats["stats"]["computational_spot"]
 
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
 
     # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L7
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
-    hologram.plot_stats(show=True)
+    # hologram.plot_stats(show=True)
 
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
@@ -169,6 +171,7 @@ if __name__ == "__main__":
     slm_phase = hologram.get_phase()
 
     ff_int = np.abs(hologram.get_farfield()) ** 2
+    target_intensity = np.abs(hologram.target) ** 2
 
     # TODO
     cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
@@ -182,9 +185,40 @@ if __name__ == "__main__":
         [cx - half, cx + half, cy - half, cy + half],
     )
 
-    # TODO write hdf5 with
-    # 
-    # optimal slm_phase, (near-field) slm_illumination, (far-field) target intensity, and hologram stats
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
+    
+    write_hdf5(
+        filepath=hdf5_path,
+        data=slm_phase,
+        group_name="slm",
+        dataset_name="slm_phase",
+        wavelength=WAVELENGTH,
+        pixel_pitch=PIXEL_PITCH,
+        maxiter=MAXITER
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=slm_illumination,
+        group_name="slm",
+        dataset_name="slm_illumination"
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=np.abs(hologram.target) ** 2,
+        group_name="target",
+        dataset_name="target_intensity"
+    )
+
+    write_hdf5(
+        filepath=hdf5_path,
+        data=target_intensity,
+        group_name="target",
+        dataset_name="inferred_farfield_intensity",
+        # **stats
+    )
 
 
 # def main():
