@@ -62,9 +62,9 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     fig, axs = plt.subplots(1, 2, figsize=(11, 4.5))
 
     im0 = axs[0].imshow(phase, cmap="twilight", interpolation="nearest")
-    axs[0].set_title("slm phase")
-    axs[0].set_xlabel("pixel x")
-    axs[0].set_ylabel("pixel y")
+    axs[0].set_title("slm")
+    axs[0].set_xlabel(r"$x [\Delta]")
+    axs[0].set_ylabel(r"$y [\Delta]$")
 
     # adjustable="box"
     # axs[0].set_aspect("equal")
@@ -79,7 +79,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
         origin="lower",
         extent=intensity_extent,
     )
-    axs[1].set_title("far-field intensity")
+    axs[1].set_title("far-field")
     axs[1].set_xlabel(r"$k_n$ [knm]")
     axs[1].set_ylabel(r"$k_m$ [knm]")
 
@@ -307,6 +307,7 @@ if __name__ == "__main__":
         array_pitch=ARRAY_PITCH,
         basis="knm",  # pixel coordinates in the far-field image plane
         amp=slm_illumination,  # fixed Gaussian illumination
+        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE),
     )
 
     # NB callback definition,
