@@ -95,6 +95,8 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
     final_phase = jnp.fft.fftshift(final_phase_native)
     final_intensity = jnp.fft.fftshift(final_intensity_native)
 
+    final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
     return final_phase, final_intensity
 
 
@@ -143,6 +145,8 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
     final_phase = jnp.fft.fftshift(final_phase_native)
     final_intensity = jnp.fft.fftshift(final_intensity_native)
 
+    final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
     return final_phase, final_intensity
 
 
@@ -190,7 +194,7 @@ if __name__ == "__main__":
 
     initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64)
 
-    config = SolverConfig(method="GS", maxiter=30, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=1_000, smooth_phase=False, smooth_sigma=5)
 
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
