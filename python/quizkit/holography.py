@@ -185,7 +185,7 @@ if __name__ == "__main__":
     plot_phase_retrieval_results(
         "./results/plots/phase_retrieval_results.pdf",
         final_phase,
-        inferred_intensity,
+        target_intensity,
         extent,
     )
 
