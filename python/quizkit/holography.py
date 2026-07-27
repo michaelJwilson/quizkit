@@ -105,7 +105,7 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
         updates, opt_state = optimizer.update(grads, opt_state, phase)
         new_phase = optax.apply_updates(phase, updates)
 
-        # NB boudn phase
+        # NB bound phase
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
         return (new_phase, opt_state), loss
 
