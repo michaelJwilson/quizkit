@@ -5,6 +5,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from quizkit.writers import write_hdf5
 from slmsuite.holography.algorithms import Hologram, SpotHologram
 
+
+# import cupy as xp
+# from cupyx.scipy.ndimage import gaussian_filter
+
+from scipy.ndimage import gaussian_filter
+
 """
 GS algorithm application via slm suite, see
 
@@ -106,12 +112,22 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
     # print(slm_fundamental_modes)
     # print(nyquist_max)
 
-def smooth_phase(hologram):
+def smooth_slm_array(array, sigma=2.0):
+    # TODO cupy support.
+    device_array = np.asarray(array)
+
+    # TODO cv2.GaussianBlur
+    # NB sigma [pixels] - see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
+    return gaussian_filter(device_array, sigma=sigma)
+
+def smooth_phase_callback(hologram, sigma=4):
     if hologram.iter % 1 == 0:
         # TODO BUG?  device transfer needs to be accounted for in terms of updates. 
-        phase = hologram.get_phase()
+        # phase = hologram.get_phase()
+        phase = hologram.phase
+        # phase = smooth_slm_array(phase, sigma=sigma)
 
-        # print(phase.shape, phase.sum())
+        print(phase.shape, phase.sum())
         # (1200, 1920) 7310169.0
         # (1200, 1920) 7303059.5
         # (1200, 1920) 7302162.5
