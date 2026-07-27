@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from slmsuite.holography.algorithms import SpotHologram
+
 
 """
 GS algorithm application via slm suite, see
@@ -13,36 +15,57 @@ def plot_source_amplitude(plot_path, source_amp):
     fig, ax = plt.subplots(figsize=(5, 3.2))
     im = ax.imshow(source_amp, cmap="inferno")
     ax.set_aspect("equal")  # show that the beam is symmetric
-    ax.set_title("Source amplitude")
-    fig.colorbar(im, ax=ax, label="amplitude")
+
+    # fig.colorbar(im, ax=ax, label="slm illumination")
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    
+    fig.colorbar(im, cax=cax, label="slm illumination")
+
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300)
 
 
 def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent):
+    plt.rcParams.update({
+        "font.family": "serif",
+        "axes.titlesize": 14,
+        "figure.titlesize": 16,
+    })
+
     fig, axs = plt.subplots(1, 2, figsize=(11, 4.5))
 
     im0 = axs[0].imshow(phase, cmap="twilight", interpolation="nearest")
-    axs[0].set_title("SLM phase")
+    axs[0].set_title("slm phase")
     axs[0].set_xlabel("pixel x")
     axs[0].set_ylabel("pixel y")
-    fig.colorbar(im0, ax=axs[0], label="phase [rad]")
+    
+    axs[0].set_aspect('equal', adjustable='box')
+    
+    div0 = make_axes_locatable(axs[0])
+    cax0 = div0.append_axes("right", size="5%", pad=0.1)
+    fig.colorbar(im0, cax=cax0, label="phase [rad]")
 
-    # NB far-field on the computational knm grid,
-    #    with (zeroth order) optical axis centered.
     im1 = axs[1].imshow(
         intensity,
         cmap="inferno",
         origin="lower",
         extent=intensity_extent,
     )
-    axs[1].set_title("Reconstructed far field")
+    axs[1].set_title("Far-field intensity")
     axs[1].set_xlabel(r"$k_n$ [knm]")
     axs[1].set_ylabel(r"$k_m$ [knm]")
-    fig.colorbar(im1, ax=axs[1], label="intensity")
+    
+    axs[1].set_aspect('equal', adjustable='box')
+    
+    div1 = make_axes_locatable(axs[1])
+    cax1 = div1.append_axes("right", size="5%", pad=0.1)
+    fig.colorbar(im1, cax=cax1, label="intensity")
 
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
+    fig.tight_layout(pad=2.0) 
+    fig.savefig(plot_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 def main():
