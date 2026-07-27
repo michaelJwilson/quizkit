@@ -5,11 +5,6 @@ import cv2
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from quizkit.writers import write_hdf5
 from slmsuite.holography.algorithms import Hologram, SpotHologram
-
-
-# import cupy as xp
-# from cupyx.scipy.ndimage import gaussian_filter
-
 from scipy.ndimage import gaussian_filter
 
 """
@@ -122,7 +117,8 @@ def smooth_slm_array(array, sigma=200):
     #    see https://shimat.github.io/opencvsharp_docs/html/7b0301d7-322d-a554-8d3f-32fd8ca0ee50.htm
     # return gaussian_filter(device_array, sigma=sigma)
     # 
-    # see https://shimat.github.io/opencvsharp_docs/html/040d5c3f-bd31-f5ff-76c8-106304d8135c.htm
+    # for bordertypes, see
+    #     https://shimat.github.io/opencvsharp_docs/html/040d5c3f-bd31-f5ff-76c8-106304d8135c.htm
     # return cv2.GaussianBlur(
     #     device_array, 
     #     ksize=(0, 0), 
