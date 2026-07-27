@@ -319,6 +319,7 @@ if __name__ == "__main__":
         data=np.abs(hologram.target) ** 2,
         group_name="target",
         dataset_name="target_intensity",
+        **header,
     )
 
     write_hdf5(
@@ -326,7 +327,6 @@ if __name__ == "__main__":
         data=target_intensity,
         group_name="target",
         dataset_name="inferred_farfield_intensity",
-        **header,
     )
 
 
