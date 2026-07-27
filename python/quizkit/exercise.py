@@ -64,7 +64,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
 
     im0 = axs[0].imshow(phase, cmap="twilight", interpolation="nearest")
     axs[0].set_title("slm")
-    axs[0].set_xlabel(r"$x [\Delta]")
+    axs[0].set_xlabel(r"$x [\Delta]$")
     axs[0].set_ylabel(r"$y [\Delta]$")
 
     # adjustable="box"

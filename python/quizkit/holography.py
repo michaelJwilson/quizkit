@@ -2,6 +2,9 @@ import logging
 from dataclasses import dataclass
 
 import jax
+# Enable 64-bit precision globally (float64 / complex128)
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 import optax
 
@@ -40,62 +43,80 @@ def get_gaussian_blur_otf(shape, sigma):
     kernel = kernel / jnp.sum(kernel)
 
     # NB (inverse) fftshift rearranges quadrants so the "center pixel" is at [0, 0] for fft, with wrapping.
-    #    fft2 computes the 2D Fourier transform.
+    #    fft2 computes the 2D Fourier transform. The returned OTF is naturally in the native convention.
     return jnp.fft.fft2(jnp.fft.ifftshift(kernel))
 
 
-def propagate_ff(complex_near):
-    # NB norm accounts for the 1/sqrt(N) normalization factor, ensuring energy conservation.
-    return jnp.fft.fftshift(jnp.fft.fft2(jnp.fft.ifftshift(complex_near), norm="ortho"))
+def propagate_ff_native(complex_near):
+    # NB pure native FFT. The origin is strictly at [0,0].
+    return jnp.fft.fft2(complex_near, norm="ortho")
 
 
-def propagate_nf(complex_far):
-    return jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.ifftshift(complex_far), norm="ortho"))
+def propagate_nf_native(complex_far):
+    # NB pure native IFFT. The origin is strictly at [0,0].
+    return jnp.fft.ifft2(complex_far, norm="ortho")
 
 
 def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
+    # NB shift all physical arrays to the native FFT convention (origin at [0,0])
+    source_amp_native = jnp.fft.ifftshift(source_amp)
+    target_amp_native = jnp.fft.ifftshift(target_amp)
+    initial_phase_native = jnp.fft.ifftshift(initial_phase)
+
     slm_shape = source_amp.shape
     blur_otf = get_gaussian_blur_otf(slm_shape, config.smooth_sigma)
 
     def gs_step(phase, _):
-        complex_nf = source_amp * jnp.exp(1j * phase)
-        complex_ff = propagate_ff(complex_nf)
+        complex_nf = source_amp_native * jnp.exp(1j * phase)
+        complex_ff = propagate_ff_native(complex_nf)
 
         # NB replace amplitude with target constraint, keep current phase.
         ff_phase = jnp.angle(complex_ff)
-        constrained_ff = target_amp * jnp.exp(1j * ff_phase)
+        constrained_ff = target_amp_native * jnp.exp(1j * ff_phase)
 
-        complex_nf_new = propagate_nf(constrained_ff)
+        complex_nf_new = propagate_nf_native(constrained_ff)
         new_phase = jnp.angle(complex_nf_new)
 
         if config.smooth_phase:
             complex_phase = jnp.exp(1j * new_phase)
-
-            # TODO BUG phase must be wrapped for smoothing to work correctly.
+            # NB everything is native, no shifts needed for the convolution
             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
             new_phase = jnp.angle(blurred_complex)
 
         return new_phase, None
 
     # NB aid XLA for efficient compilation.
-    final_phase, _ = jax.lax.scan(gs_step, initial_phase, jnp.arange(config.maxiter))
+    final_phase_native, _ = jax.lax.scan(
+        gs_step, initial_phase_native, jnp.arange(config.maxiter)
+    )
 
-    final_complex_ff = propagate_ff(source_amp * jnp.exp(1j * final_phase))
-    final_intensity = jnp.abs(final_complex_ff) ** 2
+    final_complex_ff_native = propagate_ff_native(
+        source_amp_native * jnp.exp(1j * final_phase_native)
+    )
+    final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
+
+    # NB shift the optimized outputs back to the centered physical convention
+    final_phase = jnp.fft.fftshift(final_phase_native)
+    final_intensity = jnp.fft.fftshift(final_intensity_native)
 
     return final_phase, final_intensity
 
 
 def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
-    target_intensity = target_amp**2
+    # NB shift all physical arrays to the native FFT convention (origin at [0,0])
+    source_amp_native = jnp.fft.ifftshift(source_amp)
+    target_amp_native = jnp.fft.ifftshift(target_amp)
+    initial_phase_native = jnp.fft.ifftshift(initial_phase)
+
+    target_intensity_native = target_amp_native ** 2
     optimizer = optax.adam(learning_rate=config.learning_rate)
 
     def loss(phase):
-        complex_nf = source_amp * jnp.exp(1j * phase)
-        complex_ff = propagate_ff(complex_nf)
+        complex_nf = source_amp_native * jnp.exp(1j * phase)
+        complex_ff = propagate_ff_native(complex_nf)
         inferred_intensity = jnp.abs(complex_ff) ** 2
 
-        loss_mse = jnp.mean((inferred_intensity - target_intensity) ** 2)
+        loss_mse = jnp.mean((inferred_intensity - target_intensity_native) ** 2)
 
         return loss_mse
 
@@ -104,22 +125,28 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig):
     @jax.jit
     def gd_step(carry, _):
         phase, opt_state = carry
-        loss, grads = loss_and_grad(phase)
+        loss_val, grads = loss_and_grad(phase)
         updates, opt_state = optimizer.update(grads, opt_state, phase)
         new_phase = optax.apply_updates(phase, updates)
 
         # NB bound phase
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-        return (new_phase, opt_state), loss
+        return (new_phase, opt_state), loss_val
 
-    opt_state = optimizer.init(initial_phase)
+    opt_state = optimizer.init(initial_phase_native)
 
-    (final_phase, _), _ = jax.lax.scan(
-        gd_step, (initial_phase, opt_state), jnp.arange(config.maxiter)
+    (final_phase_native, _), _ = jax.lax.scan(
+        gd_step, (initial_phase_native, opt_state), jnp.arange(config.maxiter)
     )
 
-    final_complex_ff = propagate_ff(source_amp * jnp.exp(1j * final_phase))
-    final_intensity = jnp.abs(final_complex_ff) ** 2
+    final_complex_ff_native = propagate_ff_native(
+        source_amp_native * jnp.exp(1j * final_phase_native)
+    )
+    final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
+
+    # NB shift the optimized outputs back to the centered physical convention
+    final_phase = jnp.fft.fftshift(final_phase_native)
+    final_intensity = jnp.fft.fftshift(final_intensity_native)
 
     return final_phase, final_intensity
 
@@ -157,13 +184,14 @@ if __name__ == "__main__":
     assert slm_illumination.max() > 0.0
     assert target_intensity.max() > 0.0
 
-    slm_illumination = jnp.array(slm_illumination)
-    target_intensity = jnp.array(target_intensity)
+    # Explicitly enforce float64 when loading arrays to the GPU
+    slm_illumination = jnp.array(slm_illumination, dtype=jnp.float64)
+    target_intensity = jnp.array(target_intensity, dtype=jnp.float64)
     target_amp = jnp.sqrt(target_intensity)
 
     key = jax.random.PRNGKey(42)
 
-    initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi)
+    initial_phase = jax.random.uniform(key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64)
 
     config = SolverConfig(method="GS", maxiter=30, smooth_phase=False, smooth_sigma=5)
 
