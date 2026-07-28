@@ -462,7 +462,7 @@ if __name__ == "__main__":
     # NB desired farfield amplitude in the "knm" basis
     target_intensity = np.abs(hologram.target) ** 2
 
-    stack_h, stack_w = 10,10
+    stack_h, stack_w = 25,25
     stack_mean_similar_traps = reduce_stack_similar_traps(
         ff_int, crop_coords_jax, stack_h, stack_w
     )
@@ -470,10 +470,8 @@ if __name__ == "__main__":
     trap_metrics = compute_trap_metrics(ff_int, trap_labels_jax, num_traps)
 
     plot_trap_stack_mean(
-        "./results/plots/trap_stack_mean.pdf", stack_mean_similar_traps,
+        "./results/plots/trap_stack_mean.pdf", np.log(stack_mean_similar_traps + 1e-12),
     )
-
-    print(stack_mean_similar_traps)
 
     exit(0)
 
