@@ -271,22 +271,9 @@ def get_trap_zoom(target_intensity, pad=25):
 
 
 def encode_target_traps(target_intensity, threshold_frac=0.0):
-    """
-    Encodes a target intensity image into a binary mask of traps.
-    Args:
-        target_intensity: (H, W) array of the target intensity.
-        threshold_frac: Fraction of the maximum intensity to use as the threshold.
-    Returns:
-        labeled_mask: (H, W) array with 0=background, 1..N=traps.
-        num_traps: Integer number of traps.
-        coords: (N, 2) array of trap coordinates.
-        trap_h: Maximum height of a trap.
-        trap_w: Maximum width of a trap.
-    """
     threshold = threshold_frac * target_intensity.max()
     binary_target = target_intensity > threshold
 
-    # labeled_mask: 0=background, 1..N=traps
     labeled_mask, num_traps = label(binary_target)
     slices = find_objects(labeled_mask)
 
@@ -297,8 +284,11 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
         trap_h = max(trap_h, s[0].stop - s[0].start)
         trap_w = max(trap_w, s[1].stop - s[1].start)
 
+    # FIX: Compute the integer center of the bounding box
     for s in slices:
-        coords.append((s[0].start, s[1].start))
+        center_y = (s[0].start + s[0].stop) // 2
+        center_x = (s[1].start + s[1].stop) // 2
+        coords.append((center_y, center_x))
 
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
 
@@ -330,24 +320,26 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
 
 
 def reduce_stack_similar_traps(
-    inferred_intensity, crop_coords, trap_h, trap_w, weights=None, reducer=jnp.mean,
+    inferred_intensity, center_coords, stack_h, stack_w, weights=None, reducer=jnp.mean,
 ):
     def crop_single(coord):
+        # Shift back from the center to find the top-left corner of the desired window
+        start_y = coord[0] - (stack_h // 2)
+        start_x = coord[1] - (stack_w // 2)
+        
         return jax.lax.dynamic_slice(
-            inferred_intensity, (coord[0], coord[1]), (trap_h, trap_w)
+            inferred_intensity, (start_y, start_x), (stack_h, stack_w)
         )
 
-    # Shape: (N, H, W)
-    trap_stack = jax.vmap(crop_single)(crop_coords)
+    # Shape: (N, stack_h, stack_w)
+    trap_stack = jax.vmap(crop_single)(center_coords)
 
     if weights is not None:
-        # Reshape weights to (N, 1, 1) to broadcast across spatial dimensions
         w = weights[:, None, None]
         
         if reducer in (jnp.mean, jnp.average):
             reduced_profile = jnp.sum(trap_stack * w, axis=0) / (jnp.sum(w) + 1e-12)
         else:
-            # reduced_profile = reducer(trap_stack * w, axis=0)
             raise NotImplementedError("Weighted reduction is only implemented for mean/average.")
     else:
         reduced_profile = reducer(trap_stack, axis=0)
@@ -470,14 +462,15 @@ if __name__ == "__main__":
     # NB desired farfield amplitude in the "knm" basis
     target_intensity = np.abs(hologram.target) ** 2
 
+    stack_h, stack_w = 10,10
     stack_mean_similar_traps = reduce_stack_similar_traps(
-        ff_int, crop_coords_jax, trap_h, trap_w
+        ff_int, crop_coords_jax, stack_h, stack_w
     )
     # NB inter_uniformity=0.84553164
     trap_metrics = compute_trap_metrics(ff_int, trap_labels_jax, num_traps)
 
     plot_trap_stack_mean(
-        "./results/plots/trap_stack_mean.pdf", stack_mean_similar_traps
+        "./results/plots/trap_stack_mean.pdf", stack_mean_similar_traps,
     )
 
     print(stack_mean_similar_traps)
