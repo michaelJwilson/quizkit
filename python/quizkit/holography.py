@@ -30,7 +30,7 @@ class SolverConfig:
 
     learning_rate: float = 0.1
 
-    initial_temp: float = 2.0 * jnp.pi 
+    initial_epsilon: float = 0.20
     anneal_rate: float = 0.1 
 
 
@@ -187,15 +187,23 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
         
         (loss_val, inferred_intensity), grads = loss_and_grad(phase)
         updates, opt_state = optimizer.update(grads, opt_state, phase)
-        new_phase = optax.apply_updates(phase, updates)
 
-        temperature = config.initial_temp * jnp.exp(-config.anneal_rate * step_idx)
-        noise = jax.random.normal(subkey, phase.shape) * temperature
-        new_phase = new_phase + noise
+        new_phase = optax.apply_updates(phase, updates)
+        
+        epsilon = config.initial_epsilon * jnp.exp(-config.anneal_rate * step_idx)
+        
+        key_phase, key_mask = jax.random.split(subkey, 2)
+        
+        random_phases = jax.random.uniform(
+            key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi
+        )
+        
+        explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
+        
+        new_phase = jnp.where(explore_mask, random_phases, new_phase)
 
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-        
-        # Calculate step metrics and append the loss
+
         metrics = compute_performance_metrics(inferred_intensity, target_intensity_native)
         metrics["loss"] = loss_val
 
@@ -271,9 +279,6 @@ if __name__ == "__main__":
         slm_illumination, target_amp, initial_phase, config
     )
 
-    # ---------------------------------------------------------
-    # TensorBoard Logging
-    # ---------------------------------------------------------
     log_dir = f"./runs/{config.method}_optimization"
     os.makedirs(log_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
