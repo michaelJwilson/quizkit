@@ -896,8 +896,13 @@ class HologramExperimentSolver:
         )
         
         plot_scalar_field(
-            plot_path=plot_dir / "trap_stack_forward_ln_intensity.pdf",
+            plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
             field=np.log(stack_mean_similar_traps + 1e-12),
+            cmap="inferno",
+            title="mean trap stack",
+            cbar_label="ln. intensity [a.u.]",
+            xlabel=r"$k_n$ [knm]",
+            ylabel=r"$k_m$ [knm]",
         )
 
         x_min, x_max, y_min, y_max = self.target_extent
@@ -905,11 +910,11 @@ class HologramExperimentSolver:
 
         plot_scalar_field(
             plot_path=plot_dir / "farfield_intensity.pdf",
-            field=ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max(),
+            field=np.log(ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max() + 1.e-12),
             cmap="inferno",
             title="far-field",
             extent=self.target_extent,
-            cbar_label="intensity [a.u.]",
+            cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
             origin="lower"
