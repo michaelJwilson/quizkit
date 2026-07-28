@@ -69,7 +69,7 @@ def smooth_phase_regularization(phase):
     penalty_y = 1.0 - jnp.cos(diff_y)
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
-
+# TODO
 def compute_performance_metrics(ff_int, target_int):
     ff_int = jnp.asarray(ff_int)
     target_int = jnp.asarray(target_int)
@@ -297,7 +297,7 @@ if __name__ == "__main__":
         key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
     )
 
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=200, smooth_phase=True, smooth_sigma=3)
     logger.info(
         f"Starting {config.method} optimization over {config.maxiter} iterations..."
     )
@@ -306,9 +306,6 @@ if __name__ == "__main__":
         slm_illumination, target_amp, initial_phase, config
     )
 
-    # ---------------------------------------------------------
-    # Aim Logging
-    # ---------------------------------------------------------
     logger.info("Writing iteration metrics to Aim...")
     run = Run(experiment=f"{config.method}_optimization")
     run["hparams"] = config.__dict__

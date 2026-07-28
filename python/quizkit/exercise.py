@@ -119,12 +119,11 @@ def compute_performance_metrics(ff_int, target_int):
     target_int = np.asarray(target_int, dtype=np.float32)
 
     # NB max target intensity;
-    target_max = np.max(target_int)
+    # target_max = np.max(target_int)
 
     # TODO HARDCODE
-    signal_mask = target_int > (0.01 * target_max)
+    # signal_mask = target_int > (0.01 * target_max)
     signal_mask = target_int > 0.0
-
     bg_mask = ~signal_mask
 
     signal_intensities = ff_int[signal_mask]
