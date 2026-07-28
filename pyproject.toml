@@ -29,6 +29,7 @@ dependencies = [
     "opencv-python",
     "tensorboard",
     "torch",
+    "aim",
 ]
 
 [project.optional-dependencies]
