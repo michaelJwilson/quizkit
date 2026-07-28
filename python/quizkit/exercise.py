@@ -929,6 +929,8 @@ class HologramExperimentSolver:
             reducer=None # Skips reduction, returns (N, H, W)
         )
 
+        return artifact_stacks
+
     def write_h5(self, base_dir: str = "./results"):
         out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -952,8 +954,17 @@ class HologramExperimentSolver:
         write_hdf5(
             filepath=hdf5_path,
             data=self.forward_intensity,
-            group_name=self.config.method.lower(),
+            group_name="target",
             dataset_name="inferred_farfield_intensity",
+        )
+
+        artefact_stacks = self.extract_off_target_intensity()
+
+        write_hdf5(
+            filepath=hdf5_path,
+            data=artefact_stacks,
+            group_name="background",
+            dataset_name="off_target_intensity_stacks",
         )
 
 
