@@ -26,10 +26,10 @@ class SolverConfig:
     method: str = "GD"  # {"GS", "GD"}
     maxiter: int = 200
 
-    smooth_phase: bool = False  
-    smooth_sigma: float = 2.0  
+    smooth_phase: bool = False
+    smooth_sigma: float = 2.0
 
-    loss_norm : str = "L2"  # {"L1", "L2"}
+    loss_norm: str = "L2"  # {"L1", "L2"}
 
     learning_rate: float = 0.1
 
@@ -82,7 +82,7 @@ def compute_performance_metrics(ff_int, target_int):
     stray_light_fraction = bg_power / (total_power + 1e-12)
 
     signal_vals_nan = jnp.where(signal_mask, ff_int, jnp.nan)
-    
+
     sig_min = jnp.nanmin(signal_vals_nan)
     sig_max = jnp.nanmax(signal_vals_nan)
 
@@ -154,7 +154,9 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
     return final_phase, final_intensity, history
 
 
-def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=0.0):
+def run_gd(
+    source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=0.0
+):
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
@@ -181,7 +183,7 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
         if config.loss_norm.upper() == "L1":
             loss_val = jnp.mean(jnp.abs(diff))
         elif config.loss_norm.upper() == "L2":
-            loss_val = jnp.mean(diff ** 2)
+            loss_val = jnp.mean(diff**2)
         else:
             raise ValueError(f"Unsupported loss norm: {config.loss_norm}")
 
@@ -194,24 +196,24 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
     @jax.jit
     def gd_step(carry, step_idx):
         phase, opt_state, key = carry
-        
+
         key, subkey = jax.random.split(key)
-        
+
         (loss_val, inferred_intensity), grads = loss_and_grad(phase)
         updates, opt_state = optimizer.update(grads, opt_state, phase)
 
         new_phase = optax.apply_updates(phase, updates)
-        
+
         epsilon = config.initial_epsilon * jnp.exp(-config.anneal_rate * step_idx)
-        
+
         key_phase, key_mask = jax.random.split(subkey, 2)
-        
+
         random_phases = jax.random.uniform(
             key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi
         )
-        
+
         explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
-        
+
         new_phase = jnp.where(explore_mask, random_phases, new_phase)
 
         if config.smooth_phase:
@@ -221,7 +223,9 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
 
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
-        metrics = compute_performance_metrics(inferred_intensity, target_intensity_native)
+        metrics = compute_performance_metrics(
+            inferred_intensity, target_intensity_native
+        )
         metrics["loss"] = loss_val
 
         return (new_phase, opt_state, key), metrics
@@ -230,9 +234,7 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
     step_key = jax.random.PRNGKey(42)
 
     (final_phase_native, _, _), history = jax.lax.scan(
-        gd_step, 
-        (initial_phase_native, opt_state, step_key), 
-        jnp.arange(config.maxiter)
+        gd_step, (initial_phase_native, opt_state, step_key), jnp.arange(config.maxiter)
     )
 
     final_complex_ff_native = propagate_ff_native(
@@ -254,6 +256,7 @@ def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
         return run_gd(source_amp, target_amp, initial_phase, config)
     else:
         raise ValueError(f"Unknown solver method: {config.method}")
+
 
 # tensorboard --logdir=./runs
 if __name__ == "__main__":
@@ -289,7 +292,9 @@ if __name__ == "__main__":
     )
 
     config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
-    logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
+    logger.info(
+        f"Starting {config.method} optimization over {config.maxiter} iterations..."
+    )
 
     final_phase, inferred_intensity, history = solve_hologram(
         slm_illumination, target_amp, initial_phase, config
@@ -303,19 +308,33 @@ if __name__ == "__main__":
     for step_idx in range(config.maxiter):
         if "loss" in history:
             writer.add_scalar("Loss/Total", history["loss"][step_idx].item(), step_idx)
-            
-        writer.add_scalar("Metrics/Efficiency", history["efficiency"][step_idx].item(), step_idx)
-        writer.add_scalar("Metrics/Uniformity", history["uniformity"][step_idx].item(), step_idx)
-        writer.add_scalar("Metrics/Ghost_Trap_Ratio", history["ghost_trap_ratio"][step_idx].item(), step_idx)
-        writer.add_scalar("Metrics/Stray_Light", history["stray_light_fraction"][step_idx].item(), step_idx)
-        writer.add_scalar("Metrics/Pearson", history["pearson"][step_idx].item(), step_idx)
+
+        writer.add_scalar(
+            "Metrics/Efficiency", history["efficiency"][step_idx].item(), step_idx
+        )
+        writer.add_scalar(
+            "Metrics/Uniformity", history["uniformity"][step_idx].item(), step_idx
+        )
+        writer.add_scalar(
+            "Metrics/Ghost_Trap_Ratio",
+            history["ghost_trap_ratio"][step_idx].item(),
+            step_idx,
+        )
+        writer.add_scalar(
+            "Metrics/Stray_Light",
+            history["stray_light_fraction"][step_idx].item(),
+            step_idx,
+        )
+        writer.add_scalar(
+            "Metrics/Pearson", history["pearson"][step_idx].item(), step_idx
+        )
 
     writer.close()
 
     performance_metrics = compute_performance_metrics(
         inferred_intensity, target_intensity
     )
-    
+
     # Cast final scalars to float for rich.pprint
     performance_metrics = {k: float(v) for k, v in performance_metrics.items()}
     pprint(performance_metrics)
