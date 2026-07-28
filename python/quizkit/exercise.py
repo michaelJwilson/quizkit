@@ -446,7 +446,6 @@ def extract_background_artifacts(
     Isolates background speckle/ghost traps using percentile thresholding,
     excluding regions around intended traps.
     """
-    # 1. Background Masking with Exclusion Zones
     if exclusion_pad > 0:
         struct = np.ones((exclusion_pad * 2 + 1, exclusion_pad * 2 + 1), dtype=bool)
         trap_mask = binary_dilation(trap_labels > 0, structure=struct)
@@ -459,7 +458,6 @@ def extract_background_artifacts(
     bg_mask = ~trap_mask
     residual_int = forward_intensity * bg_mask
 
-    # 2. Percentile-based Filtering
     bg_pixels = residual_int[bg_mask]
     if len(bg_pixels) == 0:
         return [], residual_int
@@ -467,7 +465,6 @@ def extract_background_artifacts(
     artifact_threshold = np.percentile(bg_pixels, percentile_q)
     binary_artifacts = residual_int > artifact_threshold
 
-    # 3. Labeling and Component Extraction
     labeled_artifacts, _ = label(binary_artifacts)
     slices = find_objects(labeled_artifacts)
 
@@ -982,14 +979,14 @@ if __name__ == "__main__":
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
     trap_config = TrapConfig(
-        trap_config_id=0,
+        trap_type="on_axis",
         array_shape=(10, 10),
         array_pitch=(20, 20), # spot separation in far-field grid samples
         array_center=None
     )
 
     trap_config_off_center = TrapConfig(
-        trap_config_id=1,
+        trap_type="off_axis",
         array_shape=(10, 10),
         array_pitch=(20, 20), # spot separation in far-field grid samples
         array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4), 
