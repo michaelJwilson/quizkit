@@ -118,7 +118,8 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
     optimizer = optax.adam(learning_rate=config.learning_rate)
 
     def loss(phase):
-        complex_nf = source_amp_native * jnp.exp(1j * phase)
+        complex_phasor = jnp.exp(1j * phase)
+        complex_nf = source_amp_native * complex_phasor
         complex_ff = propagate_ff_native(complex_nf)
         inferred_intensity = jnp.abs(complex_ff) ** 2
 
@@ -127,7 +128,9 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
             jnp.mean(target_intensity_native) + 1e-12
         )
 
-        loss = jnp.mean(jnp.abs(norm_inferred - norm_target)) + smooth_lambda * smooth_phase_regularization(phase)
+        loss = jnp.mean(jnp.abs(norm_inferred - norm_target)) 
+        loss += smooth_lambda * smooth_phase_regularization(phase)
+
         return loss
 
     loss_and_grad = jax.value_and_grad(loss)
