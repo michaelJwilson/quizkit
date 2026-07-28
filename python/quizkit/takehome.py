@@ -553,6 +553,7 @@ class ConfigMixin:
 
 @dataclass
 class TrapConfig(ConfigMixin):
+    trap_id: int
     trap_type: str 
     array_shape: Tuple[int, int]
     array_pitch: Tuple[int, int]
@@ -561,18 +562,19 @@ class TrapConfig(ConfigMixin):
 
 # TODO
 class TrapConfigs(Enum):
-    # NB format=(trap_config_id, array_shape, array_pitch, array_center)
-    ON_AXIS = (0, (10, 10), (20, 20), None)
-    OFF_AXIS = (1, (10, 10), (20, 20), (3. * 1920 / 4, 2. * 1200 / 4))
+    # NB format=(trap_type, array_shape, array_pitch, array_center)
+    ON_AXIS = (0, "on_axis", (10, 10), (20, 20), None)
+    OFF_AXIS = (1, "off_axis", (10, 10), (20, 20), (3. * 1920 / 4, 2. * 1200 / 4))
 
     @property
-    def int_id(self) -> int:
+    def id(self) -> int:
         return self.value[0]
 
     def to_config(self) -> TrapConfig:
-        config_id, array_shape, array_pitch, array_center = self.value
+        config_id, trap_type, array_shape, array_pitch, array_center = self.value
         return TrapConfig(
-            trap_config_id=config_id,
+            trap_id=self.id,
+            trap_type=trap_type, 
             array_shape=array_shape,
             array_pitch=array_pitch,
             array_center=array_center,
