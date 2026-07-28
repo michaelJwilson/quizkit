@@ -8,7 +8,8 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
 from scipy.ndimage import find_objects, gaussian_filter, label
-from slmsuite.holography.algorithms import Hologram, SpotHologram
+from slmsuite.holography.algorithms import SpotHologram
+import matplotlib.gridspec as gridspec
 
 from quizkit.writers import write_hdf5
 
@@ -364,6 +365,142 @@ def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig.savefig(plot_path, dpi=300)
     plt.close(fig)
 
+def extract_background_artifacts(ff_int, target_intensity, threshold_frac=0.05, max_artifacts=9):
+    """
+    Identifies contiguous blobs of residual light in the background.
+    """
+    # 1. Mask out the actual target traps (everything > 0 in target is a trap)
+    bg_mask = target_intensity == 0.0
+    residual_int = ff_int * bg_mask
+
+    # 2. Threshold the residual light to find distinct artifacts (e.g., 0th order)
+    artifact_threshold = residual_int.max() * threshold_frac
+    binary_artifacts = residual_int > artifact_threshold
+
+    labeled_artifacts, num_artifacts = label(binary_artifacts)
+    slices = find_objects(labeled_artifacts)
+
+    artifacts = []
+    for i, s in enumerate(slices):
+        # Center coordinate (y, x)
+        cy = (s[0].start + s[0].stop) // 2
+        cx = (s[1].start + s[1].stop) // 2
+        
+        # Summed intensity for this component
+        comp_mask = labeled_artifacts == (i + 1)
+        comp_power = np.sum(residual_int[comp_mask])
+        
+        artifacts.append({
+            'id': i + 1,
+            'cy': cy,
+            'cx': cx,
+            'power': comp_power
+        })
+
+    # Sort artifacts by total power (descending) and keep the top N
+    artifacts.sort(key=lambda x: x['power'], reverse=True)
+    artifacts = artifacts[:max_artifacts]
+    
+    return artifacts, residual_int
+
+def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
+    """
+    Extracts centered crops for each artifact.
+    """
+    stacks = []
+    H, W = ff_int.shape
+    for art in artifacts:
+        cy, cx = art['cy'], art['cx']
+        
+        y0 = cy - stack_h // 2
+        y1 = y0 + stack_h
+        x0 = cx - stack_w // 2
+        x1 = x0 + stack_w
+        
+        # Safe cropping with padding if an artifact is near the edge
+        crop = np.zeros((stack_h, stack_w), dtype=ff_int.dtype)
+        
+        # Calculate valid ranges
+        valid_y0, valid_y1 = max(0, y0), min(H, y1)
+        valid_x0, valid_x1 = max(0, x0), min(W, x1)
+        
+        # Calculate destination ranges in the crop array
+        dest_y0 = valid_y0 - y0
+        dest_y1 = dest_y0 + (valid_y1 - valid_y0)
+        dest_x0 = valid_x0 - x0
+        dest_x1 = dest_x0 + (valid_x1 - valid_x0)
+        
+        if valid_y1 > valid_y0 and valid_x1 > valid_x0:
+            crop[dest_y0:dest_y1, dest_x0:dest_x1] = ff_int[valid_y0:valid_y1, valid_x0:valid_x1]
+            
+        stacks.append(crop)
+        
+    return np.array(stacks)
+
+def plot_artifact_analysis(plot_path, residual_int, artifacts, artifact_stacks):
+    """
+    Creates a dual plot: Left = Log map of residual light, Right = Grid of artifact stacks.
+    """
+    num_arts = len(artifacts)
+    if num_arts == 0:
+        print("No background artifacts found above threshold.")
+        return
+
+    fig = plt.figure(figsize=(12, 5))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1.2, 1])
+
+    # --- LEFT: Map of Residual Light ---
+    ax_map = fig.add_subplot(gs[0])
+    
+    # Log scale helps visualize faint artifacts and the 0th order simultaneously
+    im = ax_map.imshow(np.log(residual_int + 1e-12), cmap="inferno")
+    ax_map.set_title("Residual Background Light Map", fontsize=12)
+    
+    total_bg_power = np.sum(residual_int)
+    
+    # Annotate the map
+    for i, art in enumerate(artifacts):
+        cy, cx, power = art['cy'], art['cx'], art['power']
+        rel_power = (power / total_bg_power) * 100  # Percentage of total stray light
+        
+        # Mark center
+        ax_map.plot(cx, cy, 'rx', markersize=8)
+        
+        # Label: ID, (X, Y), and % power
+        label_text = f"#{i+1}\npx:({cx},{cy})\n{rel_power:.1f}% bg"
+        ax_map.text(cx + 15, cy, label_text, color='white', fontsize=8, va='center', 
+                    bbox=dict(facecolor='black', alpha=0.6, edgecolor='none', pad=2))
+
+    ax_map.set_xticks([])
+    ax_map.set_yticks([])
+    
+    divider = make_axes_locatable(ax_map)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax, label="Log Intensity")
+
+    # --- RIGHT: Stacks Grid ---
+    # Dynamically size the grid (e.g., 9 artifacts -> 3x3 grid)
+    grid_size = int(np.ceil(np.sqrt(num_arts)))
+    gs_right = gs[1].subgridspec(grid_size, grid_size, wspace=0.1, hspace=0.1)
+    
+    for i, (art, stack) in enumerate(zip(artifacts, artifact_stacks)):
+        row = i // grid_size
+        col = i % grid_size
+        ax_stack = fig.add_subplot(gs_right[row, col])
+        
+        ax_stack.imshow(stack, cmap="inferno")
+        ax_stack.set_title(f"Artifact #{i+1}", fontsize=9, pad=3)
+        ax_stack.set_xticks([])
+        ax_stack.set_yticks([])
+        
+        # Draw a subtle crosshair at the center of the crop
+        ch, cw = stack.shape[0] // 2, stack.shape[1] // 2
+        ax_stack.plot(cw, ch, 'r+', markersize=5, alpha=0.5)
+
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
+
 
 if __name__ == "__main__":
     WAVELENGTH = 780e-9  # m
@@ -475,6 +612,27 @@ if __name__ == "__main__":
 
     plot_trap_stack_mean(
         "./results/plots/trap_stack_mean.pdf", np.log(stack_mean_similar_traps + 1e-12),
+    )
+
+    artifacts, residual_int = extract_background_artifacts(
+        ff_int, 
+        target_intensity, 
+        threshold_frac=0.0,  
+        max_artifacts=9
+    )
+
+    artifact_stacks = crop_artifact_stacks(
+        ff_int, 
+        artifacts, 
+        stack_h=stack_h, 
+        stack_w=stack_w,
+    )
+
+    plot_artifact_analysis(
+        "./results/plots/artifact_analysis.pdf", 
+        residual_int, 
+        artifacts, 
+        artifact_stacks
     )
 
     exit(0)
