@@ -1,4 +1,5 @@
 import ast
+import h5py
 import datetime
 import random
 import pickle
@@ -68,7 +69,7 @@ def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None,
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-
+"""
 def plot_target_intensity(plot_path, target_intensity, target_extent=None):
     fig, ax = plt.subplots(figsize=(5, 3.2))
     im = ax.imshow(target_intensity, cmap="inferno", extent=target_extent)
@@ -83,8 +84,8 @@ def plot_target_intensity(plot_path, target_intensity, target_extent=None):
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300)
-
-
+"""
+"""
 def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig, ax = plt.subplots(figsize=(4, 4))
 
@@ -101,7 +102,7 @@ def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300)
     plt.close(fig)
-
+"""
 
 def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=None):
     plt.rcParams.update(
@@ -515,6 +516,10 @@ class SolverConfig(ConfigMixin):
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 
+    timestamp: str = field(
+        default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
+
 class HologramExperiment:
     _is_frozen = False
 
@@ -631,7 +636,7 @@ class HologramExperiment:
             cbar_label="target intensity"
         )
 
-    def save(self, base_dir: str = "./results"):
+    def write_h5(self, base_dir: str = "./results"):
         run_dir = self._get_run_dir(base_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         
@@ -654,6 +659,75 @@ class HologramExperiment:
             dataset_name="target"
         )
 
+class HologramExperimentSolver:
+    def __init__(self, experiment: HologramExperiment, config: SolverConfig):
+        self.exp = experiment
+        self.config = config
+
+        self.__hologram = SpotHologram.make_rectangular_array(
+            run_config.slm_shape,
+            array_shape=run_config.array_shape,
+            array_pitch=run_config.array_pitch,
+            basis="knm",  # pixel coordinates in the far-field image plane
+            amp=slm_illumination,  # fixed Gaussian illumination
+            array_center=run_config.array_center,  # shift from zeroth order
+            phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
+        )
+
+        assert np.all(self.exp.target == self.__hologram.target)
+
+    def optimize(self):
+        self.__hologram.optimize(
+            method=self.config.method,
+            maxiter=self.config.maxiter,
+            stat_groups=["computational_spot"],
+            verbose=False,
+        )
+
+    @property
+    def target_intensity(self):
+        return self.exp.intensity
+    
+    @property
+    def target_extent(self):
+        return self.exp.target_extent
+
+    @property
+    def slm_phase(self):
+        return self.__hologram.get_phase()
+
+    @property
+    def forward_intensity(self):
+        return np.abs(self.__hologram.get_farfield()) ** 2
+
+    def plot(self, base_dir: str = "./results"):
+        run_dir = self.exp._get_run_dir(base_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    def save(self, base_dir: str = "./results"):
+        run_dir = self.exp._get_run_dir(base_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(run_dir / f"phase_retrieval/{self.config.timestamp}/solver_config.json", "w") as f:
+            f.write(self.config.to_json())
+            
+        write_metrics_table(run_dir / f"phase_retrieval/{self.config.timestamp}/metrics.tex", self.performance_metrics)
+
+        hdf5_path = run_dir / f"phase_retrieval/{self.config.timestamp}/phase_solution.h5"
+
+        write_hdf5(
+            filepath=hdf5_path,
+            data=self.slm_phase,
+            group_name="slm",
+            dataset_name=f"slm_phase_{self.config.method.lower()}",
+        )
+
+        write_hdf5(
+            filepath=hdf5_path,
+            data=self.ff_int,
+            group_name=self.config.method.lower(),
+            dataset_name="inferred_farfield_intensity",
+        )
 
 
 if __name__ == "__main__":
