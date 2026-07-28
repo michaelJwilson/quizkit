@@ -1,18 +1,16 @@
-import jax
-import jax.numpy as jnp
-
 import datetime
 import random
+
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from rich.pretty import pprint
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from quizkit.writers import write_hdf5
+from rich.pretty import pprint
+from scipy.ndimage import find_objects, gaussian_filter, label
 from slmsuite.holography.algorithms import Hologram, SpotHologram
-from scipy.ndimage import gaussian_filter
-import numpy as np
-from scipy.ndimage import label
-from scipy.ndimage import find_objects
+
+from quizkit.writers import write_hdf5
 
 """
 GS algorithm application via slm suite, see
@@ -271,6 +269,7 @@ def get_trap_zoom(target_intensity, pad=25):
 
     return (x_min, x_max, y_min, y_max)
 
+
 def encode_target_traps(target_intensity, threshold_frac=0.0):
     """
     Encodes a target intensity image into a binary mask of traps.
@@ -286,22 +285,23 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
     """
     threshold = threshold_frac * target_intensity.max()
     binary_target = target_intensity > threshold
-    
+
     # labeled_mask: 0=background, 1..N=traps
     labeled_mask, num_traps = label(binary_target)
     slices = find_objects(labeled_mask)
-    
+
     coords = []
     trap_h, trap_w = 0, 0
-    
+
     for s in slices:
         trap_h = max(trap_h, s[0].stop - s[0].start)
         trap_w = max(trap_w, s[1].stop - s[1].start)
-        
+
     for s in slices:
         coords.append((s[0].start, s[1].start))
-        
+
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
+
 
 def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
     """
@@ -314,77 +314,56 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
     flat_intensity = inferred_intensity.ravel()
     flat_labels = trap_mask.ravel()
 
-    # --- INTER-TRAP (Balance between traps) ---
-    # bincount length is num_traps + 1 (index 0 is background, which we slice off)
-    trap_powers = jnp.bincount(flat_labels, weights=flat_intensity, length=num_traps + 1)[1:]
-    
+    trap_powers = jnp.bincount(
+        flat_labels, weights=flat_intensity, length=num_traps + 1
+    )[1:]
+
     mean_power = jnp.mean(trap_powers)
-    inter_uniformity = (jnp.max(trap_powers) - jnp.min(trap_powers)) / (2 * mean_power + 1e-12)
+    inter_uniformity = (jnp.max(trap_powers) - jnp.min(trap_powers)) / (
+        2 * mean_power + 1e-12
+    )
 
-    # --- INTRA-TRAP (Smoothness within traps) ---
-    pixels_per_trap = jnp.bincount(flat_labels, length=num_traps + 1)[1:]
-    trap_means = trap_powers / pixels_per_trap
-
-    # Max pixel per trap
-    trap_maxes = jax.ops.segment_max(flat_intensity, flat_labels, num_segments=num_traps + 1)[1:]
-    
-    # Min pixel per trap: min(x) = -max(-x). 
-    # Mask background as +inf to prevent it from dragging the minimum down to 0.
-    safe_intensity = jnp.where(flat_labels > 0, flat_intensity, jnp.inf)
-    trap_mins = -jax.ops.segment_max(-safe_intensity, flat_labels, num_segments=num_traps + 1)[1:]
-    
-    intra_uniformities = (trap_maxes - trap_mins) / (2 * trap_means + 1e-12)
-    mean_intra_uniformity = jnp.mean(intra_uniformities)
-    
     return {
         "inter_uniformity": inter_uniformity,
-        "mean_intra_uniformity": mean_intra_uniformity,
         "trap_powers": trap_powers,
-        "intra_uniformities": intra_uniformities
     }
 
-def stack_similar_traps(inferred_intensity, crop_coords, trap_h, trap_w):
-    """
-    Vectorized extraction of bounding boxes into a (N, H, W) tensor.
-    Args:
-        crop_coords: (num_traps, 2) static array of (y, x) top-left coordinates.
-        trap_h, trap_w: Static dimensions computed in CPU pre-processing.
-    """
-    def crop_single(coord):
-        return jax.lax.dynamic_slice(inferred_intensity, (coord[0], coord[1]), (trap_h, trap_w))
-    
-    return jax.vmap(crop_single)(crop_coords)
 
-def compute_stack_mean_similar_traps(inferred_intensity, crop_coords, trap_h, trap_w, weights=None):
-    """
-    Vectorized extraction of bounding boxes, returning a single (weighted) mean trap profile.
-    """
+def reduce_stack_similar_traps(
+    inferred_intensity, crop_coords, trap_h, trap_w, weights=None, reducer=jnp.mean,
+):
     def crop_single(coord):
-        return jax.lax.dynamic_slice(inferred_intensity, (coord[0], coord[1]), (trap_h, trap_w))
-    
-    # Extract all traps into an (N, H, W) tensor
+        return jax.lax.dynamic_slice(
+            inferred_intensity, (coord[0], coord[1]), (trap_h, trap_w)
+        )
+
+    # Shape: (N, H, W)
     trap_stack = jax.vmap(crop_single)(crop_coords)
-    
+
     if weights is not None:
-        # Reshape weights to (N, 1, 1) to broadcast across the spatial dimensions
+        # Reshape weights to (N, 1, 1) to broadcast across spatial dimensions
         w = weights[:, None, None]
-        mean_profile = jnp.sum(trap_stack * w, axis=0) / (jnp.sum(w) + 1e-12)
-    else:
-        # Standard unweighted spatial mean across all traps
-        mean_profile = jnp.mean(trap_stack, axis=0)
         
-    return mean_profile
+        if reducer in (jnp.mean, jnp.average):
+            reduced_profile = jnp.sum(trap_stack * w, axis=0) / (jnp.sum(w) + 1e-12)
+        else:
+            # reduced_profile = reducer(trap_stack * w, axis=0)
+            raise NotImplementedError("Weighted reduction is only implemented for mean/average.")
+    else:
+        reduced_profile = reducer(trap_stack, axis=0)
+
+    return reduced_profile
+
 
 def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig, ax = plt.subplots(figsize=(4, 4))
-    
+
     im = ax.imshow(trap_stack_mean, cmap="inferno")
     ax.set_aspect("equal")
     ax.set_title("Mean Trap Profile", fontsize=10)
     ax.set_xticks([])
     ax.set_yticks([])
 
-    # Match colorbar height strictly to the image axis
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     fig.colorbar(im, cax=cax, label="Forward Intensity")
@@ -404,11 +383,11 @@ if __name__ == "__main__":
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
-    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423   
+    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
     ARRAY_CENTER = None
 
     METHOD = "GS"  # {GS, WGS}
-    MAXITER = 1 # TODO HACK
+    MAXITER = 1  # TODO HACK
 
     config = {
         "wavelength": WAVELENGTH,
@@ -449,7 +428,9 @@ if __name__ == "__main__":
         target_extent,
     )
 
-    trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(hologram.target, threshold_frac=0.0)
+    trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(
+        hologram.target, threshold_frac=0.0
+    )
 
     trap_labels_jax = jnp.array(trap_labels_np)
     crop_coords_jax = jnp.array(coords_np)
@@ -469,7 +450,7 @@ if __name__ == "__main__":
     # hologram.stats.keys() == ['method', 'flags', 'stats']
     # hologram.stats["stats"].keys() == ['computational_spot']
     # hologram.stats["stats"]["computational_spot"].keys() == ['pkpk_err', 'std_err', 'uniformity', 'efficiency']
-    stats = hologram.stats["stats"]["computational_spot"]
+    # stats = hologram.stats["stats"]["computational_spot"]
 
     # limits=zoombox
     # hologram.plot_farfield(cbar=True, title='FF Amp');
@@ -486,18 +467,22 @@ if __name__ == "__main__":
 
     ff_int = np.abs(hologram.get_farfield()) ** 2
 
-    # NB desired farfield amplitude in the "knm" basis 
+    # NB desired farfield amplitude in the "knm" basis
     target_intensity = np.abs(hologram.target) ** 2
 
-    stack_mean_similar_traps = compute_stack_mean_similar_traps(ff_int, crop_coords_jax, trap_h, trap_w)
+    stack_mean_similar_traps = reduce_stack_similar_traps(
+        ff_int, crop_coords_jax, trap_h, trap_w
+    )
+    # NB inter_uniformity=0.84553164
     trap_metrics = compute_trap_metrics(ff_int, trap_labels_jax, num_traps)
 
-    plot_trap_stack_mean("./results/plots/trap_stack_mean.pdf", stack_mean_similar_traps)
+    plot_trap_stack_mean(
+        "./results/plots/trap_stack_mean.pdf", stack_mean_similar_traps
+    )
 
-    print(trap_metrics)
+    print(stack_mean_similar_traps)
 
     exit(0)
-
 
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
     write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
