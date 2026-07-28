@@ -749,6 +749,7 @@ class HologramExperimentSolver:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):
         self.exp = experiment
         self.config = config
+        self.backend = None
 
         # TODO
         self.stack_h = 50
@@ -776,12 +777,19 @@ class HologramExperimentSolver:
 
         start_time = time.time()
 
-        self.__hologram.optimize(
-            method=self.config.method,
-            maxiter=self.config.maxiter,
-            stat_groups=["computational_spot"],
-            verbose=False,
-        )
+        if self.backend is None:
+            self.__hologram.optimize(
+                method=self.config.method,
+                maxiter=self.config.maxiter,
+                stat_groups=["computational_spot"],
+                verbose=False,
+            )
+        else:
+            self.backend.optimize(
+                method=self.config.method,
+                maxiter=self.config.maxiter,
+                verbose=False,
+            )
 
         self.config["solver_runtime"] = time.time() - start_time
 
@@ -980,7 +988,7 @@ def run_slmsuit_phase_retrieval():
     )
 
     logger.info(f"Done.")
-    
+
 
 def main():
     run_slmsuit_phase_retrieval()

@@ -1,8 +1,4 @@
 import logging
-import datetime
-import os
-from dataclasses import dataclass
-
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -13,16 +9,17 @@ from aim import Run
 
 from rich.pretty import pprint
 from quizkit.readers import read_hdf5
-from quizkit.exercise import (
+from quizkit.takehome import (
     plot_phase_retrieval_results,
     get_trap_zoom,
     SolverConfig,
+    PerformanceMetrics,
 )
 
-# TODO HACK
 import atexit
 import aim.ext.cleanup
 
+# TODO HACK
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 logger = logging.getLogger(__name__)
@@ -54,7 +51,7 @@ def smooth_phase_regularization(phase):
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
 
-# TODO
+# DEPRECATE
 def compute_performance_metrics(ff_int, target_int):
     ff_int = jnp.asarray(ff_int)
     target_int = jnp.asarray(target_int)
@@ -100,8 +97,10 @@ def compute_performance_metrics(ff_int, target_int):
         "pearson": pearson,
     }
 
-
+# TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
 def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
+    logger.info(f"Solving for Gerchberg-Saxton with {config.maxiter} iterations.")
+
     source_amp_native = jnp.fft.ifftshift(source_amp)
     target_amp_native = jnp.fft.ifftshift(target_amp)
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
@@ -153,6 +152,8 @@ def run_gd(
     initial_phase_native = jnp.fft.ifftshift(initial_phase)
 
     target_intensity_native = target_amp_native**2
+
+    # TODO bail out on loss or parameter convergence
     optimizer = optax.adam(learning_rate=config.learning_rate)
 
     slm_shape = source_amp.shape
@@ -291,7 +292,7 @@ if __name__ == "__main__":
         slm_illumination, target_amp, initial_phase, config
     )
 
-    logger.info("Writing iteration metrics to Aim...")
+    # TODO aim logging; track metrics and plots.
     run = Run(experiment=f"{config.method}_optimization")
     run["hparams"] = config.__dict__
 
@@ -341,7 +342,6 @@ if __name__ == "__main__":
         inferred_intensity, target_intensity
     )
 
-    # Cast final scalars to float for rich.pprint
     performance_metrics = {k: float(v) for k, v in performance_metrics.items()}
     pprint(performance_metrics)
 
@@ -356,41 +356,3 @@ if __name__ == "__main__":
     )
 
     logger.info("Done.")
-
-    """
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    hdf5_path = f"./hologram_{config.method}_{timestamp}.h5"
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=final_phase,
-        group_name="slm",
-        dataset_name="slm_phase",
-        wavelength=WAVELENGTH,
-        pixel_pitch=PIXEL_PITCH,
-        maxiter=config.maxiter,
-        method=config.method
-    )
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=slm_illumination,
-        group_name="slm",
-        dataset_name="slm_illumination",
-    )
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=target_intensity,
-        group_name="target",
-        dataset_name="target_intensity",
-    )
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=inferred_intensity,
-        group_name="target",
-        dataset_name="inferred_farfield_intensity",
-        **stats
-    )
-    """
