@@ -1,7 +1,9 @@
 import h5py
 import datetime
 import random
+import logging
 import json
+import time
 from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional, Any
 
@@ -27,6 +29,36 @@ https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.htm
 # NB slmsuite seeds on random, not numpy (but potentially cupy/cuda).
 random.seed(42)
 np.random.seed(42)
+
+start_time = time.time()
+class RuntimeFormatter(logging.Formatter):
+    def format(self, record):
+        runtime_minutes = (time.time() - start_time) / 60.0
+        record.runtime = f"{runtime_minutes:.2f}m"
+        return super().format(record)
+
+
+formatter = RuntimeFormatter(
+    fmt="%(asctime)s - %(runtime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+file_handler = logging.FileHandler("quizkit.log")
+stream_handler = logging.StreamHandler()
+
+file_handler.setFormatter(formatter)
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
+
+logger = logging.getLogger(__name__)
 
 
 def get_gaussian_slm_illumination(slm_shape):
@@ -894,9 +926,9 @@ class HologramExperimentSolver:
 
         plot_scalar_field(
             plot_path=plot_dir / "farfield_intensity.pdf",
-            field=np.log(ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max() + 1.e-12),
+            field=ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max(),
             cmap="inferno",
-            title="far-field",
+            title="far field",
             extent=self.target_extent,
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
