@@ -31,8 +31,8 @@ class SolverConfig:
 
     learning_rate: float = 0.1
 
-    initial_epsilon: float = 0.20
-    anneal_rate: float = 0.1 
+    initial_epsilon: float = 0.5
+    anneal_rate: float = 0.05
 
 
 def get_gaussian_blur_otf(shape, sigma):
@@ -272,7 +272,7 @@ if __name__ == "__main__":
         key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
     )
 
-    config = SolverConfig(method="GD", maxiter=50, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
     logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
 
     # Now returning history dictionary accumulated via lax.scan
@@ -284,7 +284,6 @@ if __name__ == "__main__":
     log_dir = f"./runs/{config.method}_optimization_{timestamp}"
     os.makedirs(log_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
-    logger.info(f"Writing iteration metrics to TensorBoard at {log_dir}...")
 
     for step_idx in range(config.maxiter):
         if "loss" in history:
@@ -297,7 +296,6 @@ if __name__ == "__main__":
         writer.add_scalar("Metrics/Pearson", history["pearson"][step_idx].item(), step_idx)
 
     writer.close()
-    # ---------------------------------------------------------
 
     performance_metrics = compute_performance_metrics(
         inferred_intensity, target_intensity
