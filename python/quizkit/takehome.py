@@ -748,7 +748,7 @@ class HologramExperiment:
         }
 
     def _get_run_dir(self, base_dir: str) -> Path:
-        return Path(base_dir) / f"run_{self.run_config.timestamp}"
+        return Path(base_dir) / f"run_{self.run_config.hash}"
 
     def plot(self, base_dir: str = "./results"):
         run_dir = self._get_run_dir(base_dir)
@@ -939,8 +939,11 @@ class HologramExperimentSolver:
     def forward_intensity(self):
         return np.abs(self.__hologram.get_farfield()) ** 2
 
+    def __get_run_dir(self, base_dir: str) -> Path:
+        return self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.hash}"
+
     def plot(self, base_dir: str = "./results"):
-        out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
+        out_dir = self.__get_run_dir(base_dir)
         plot_dir = out_dir / "plots"
         plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1009,7 +1012,7 @@ class HologramExperimentSolver:
         return artifact_stacks
 
     def write_h5(self, base_dir: str = "./results"):
-        out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
+        out_dir =self.__get_run_dir(base_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Writing solver configuration to {out_dir / 'solver_config.json'}.")
@@ -1024,8 +1027,7 @@ class HologramExperimentSolver:
         with open(out_dir / "performance_metrics.json", "w") as f:
             f.write(metrics.to_json())
             
-        hdf5_path = out_dir / f"phase_solution_{self.config.timestamp}.h5"
-
+        hdf5_path = out_dir / f"phase_solution_{self.config.hash}.h5"
         logger.info(f"Writing HologramExperimentSovler results to {hdf5_path}.")
 
         write_hdf5(
