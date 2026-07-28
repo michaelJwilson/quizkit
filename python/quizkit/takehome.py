@@ -17,7 +17,6 @@ from scipy.ndimage import find_objects, label, binary_dilation
 from slmsuite.holography.algorithms import SpotHologram
 from pathlib import Path
 from functools import cached_property
-
 from quizkit.writers import write_hdf5
 
 """
@@ -997,7 +996,7 @@ class HologramExperimentSolver:
         )
 
 
-if __name__ == "__main__":
+def run_slmsuit_phase_retrieval():
     slm_shape=(1200, 1920) # (height, width) in pixels,
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
@@ -1059,7 +1058,7 @@ if __name__ == "__main__":
         caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase."
     )
     
-    print(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
+    logger.info(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
 
     """
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
@@ -1218,9 +1217,9 @@ if __name__ == "__main__":
     """
 
 
-# def main():
-#     run_slmsuit_phase_retrieval()
+def main():
+    run_slmsuit_phase_retrieval()
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+     main()

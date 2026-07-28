@@ -54,7 +54,7 @@ test = [
 ]
 
 [project.scripts]
-run_quizkit = "quizkit.scripts.run_quizkit:main"
+run_quizkit = "quizkit.takehome:run_slmsuit_phase_retrieval"
 
 [tool.hatch.build.targets.sdist]
 include = ["python/quizkit"]
