@@ -120,87 +120,6 @@ def plot_scalar_field(
     plt.close(fig)
 
 
-"""
-def plot_target_intensity(plot_path, target_intensity, target_extent=None):
-    fig, ax = plt.subplots(figsize=(5, 3.2))
-    im = ax.imshow(target_intensity, cmap="inferno", extent=target_extent)
-    ax.set_aspect("equal")  # show that the beam is symmetric
-
-    # fig.colorbar(im, ax=ax, label="slm illumination")
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-
-    fig.colorbar(im, cax=cax, label="slm illumination")
-
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
-"""
-"""
-def plot_trap_stack_mean(plot_path, trap_stack_mean):
-    fig, ax = plt.subplots(figsize=(4, 4))
-
-    im = ax.imshow(trap_stack_mean, cmap="inferno")
-    ax.set_aspect("equal")
-    ax.set_title("Mean Trap Profile", fontsize=10)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax, label="Forward Intensity")
-
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
-    plt.close(fig)
-"""
-"""
-def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=None):
-    plt.rcParams.update(
-        {
-            "font.family": "serif",
-            "axes.titlesize": 14,
-            "figure.titlesize": 16,
-        }
-    )
-
-    fig, axs = plt.subplots(1, 2, figsize=(11, 4.5))
-
-    im0 = axs[0].imshow(phase, cmap="twilight", interpolation="nearest")
-    axs[0].set_title("slm")
-    axs[0].set_xlabel(r"$x [\Delta]$")
-    axs[0].set_ylabel(r"$y [\Delta]$")
-
-    # adjustable="box"
-    # axs[0].set_aspect("equal")
-
-    div0 = make_axes_locatable(axs[0])
-    cax0 = div0.append_axes("right", size="5%", pad=0.1)
-    fig.colorbar(im0, cax=cax0, label="phase [rad]")
-
-    im1 = axs[1].imshow(
-        intensity / intensity.max(),
-        cmap="inferno",
-        origin="lower",
-        extent=intensity_extent,
-    )
-    axs[1].set_title("far-field")
-    axs[1].set_xlabel(r"$k_n$ [knm]")
-    axs[1].set_ylabel(r"$k_m$ [knm]")
-
-    # adjustable="box"
-    axs[1].set_aspect("equal")
-
-    div1 = make_axes_locatable(axs[1])
-    cax1 = div1.append_axes("right", size="5%", pad=0.1)
-    fig.colorbar(im1, cax=cax1, label="intensity [a.u.]")
-
-    fig.tight_layout(pad=2.0)
-    fig.savefig(plot_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-"""
-
-
 def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
 
@@ -223,92 +142,6 @@ def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
         "farfield_extent_rad": float(farfield_extent),
         "farfield_resolution_rad": float(farfield_resolution),
     }
-
-
-"""
-def compute_performance_metrics(forward_intensity, target_intensity):
-    # NB given far-field intensity and target intensity ...
-    ff_int = np.asarray(forward_intensity, dtype=np.float32)
-    target_int = np.asarray(target_intensity, dtype=np.float32)
-
-    # NB max target intensity;
-    # target_max = np.max(target_int)
-
-    # TODO HARDCODE
-    # signal_mask = target_int > (0.01 * target_max)
-    signal_mask = target_int > 0.0
-    bg_mask = ~signal_mask
-
-    signal_intensities = forward_intensity[signal_mask]
-    bg_intensities = forward_intensity[bg_mask]
-
-    total_power = np.sum(forward_intensity)
-
-    signal_power = np.sum(signal_intensities)
-    bg_power = np.sum(bg_intensities)
-
-    # NB fraction of realized power in the target/signal region
-    efficiency = signal_power / total_power
-
-    # TODO
-    stray_light_fraction = bg_power / total_power
-
-    sig_min = np.min(signal_intensities)
-    sig_max = np.max(signal_intensities)
-
-    sig_constrast = sig_max / (sig_min + 1e-12)
-
-    # NB michelson uniformity = (I_max - I_min) / (I_max + I_min) = 0.5 * (max - min) / mean
-    uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
-
-    # NB frac. standard deviation wrt the med. target intensity (no background).
-    # cv = sig_std / (sig_med + 1e-12)
-
-    max_bg_intensity = np.max(bg_intensities)
-    ghost_trap_ratio = max_bg_intensity / (sig_max + 1e-12)
-
-    # ff_norm = ff_int / total_power
-    # target_norm = target_int / np.sum(target_int)
-
-    # NB root mean square error (RMSE) between normalized far-field and target intensities
-    # rmse = np.sqrt(np.mean((ff_norm - target_norm) ** 2))
-
-    ff_centered = ff_int - np.mean(ff_int)
-    target_centered = target_int - np.mean(target_int)
-
-    numerator = np.sum(ff_centered * target_centered)
-    denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
-
-    pearson = numerator / (denominator + 1e-12)
-
-    return {
-        "efficiency": float(efficiency),
-        "stray_light_fraction": float(stray_light_fraction),
-        "sig_constrast": float(sig_constrast),
-        "uniformity": float(uniformity),
-        "ghost_trap_ratio": float(ghost_trap_ratio),
-        "pearson": float(pearson),
-    }
-"""
-"""
-def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
-    flat_intensity = inferred_intensity.ravel()
-    flat_labels = trap_mask.ravel()
-
-    trap_powers = jnp.bincount(
-        flat_labels, weights=flat_intensity, length=num_traps + 1
-    )[1:]
-
-    mean_power = jnp.mean(trap_powers)
-    inter_uniformity = (jnp.max(trap_powers) - jnp.min(trap_powers)) / (
-        2 * mean_power + 1e-12
-    )
-
-    return {
-        "inter_uniformity": inter_uniformity,
-        "trap_powers": trap_powers,
-    }
-"""
 
 
 def write_performance_metrics_tex(
@@ -1101,22 +934,8 @@ def run_slmsuit_phase_retrieval():
     # `"knm"``, this is ``(shape[1], shape[0])/2``.
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    # trap_config = TrapConfig(
-    #     trap_type="on_axis",
-    #     array_shape=(10, 10),
-    #     array_pitch=(20, 20), # spot separation in far-field grid samples
-    #     array_center=None
-    # )
-
     trap_config = TrapConfigs.ON_AXIS.to_config()
     trap_config_off_center = TrapConfigs.OFF_AXIS.to_config()
-
-    # trap_config_off_center = TrapConfig(
-    #     trap_type="off_axis",
-    #     array_shape=(10, 10),
-    #     array_pitch=(20, 20), # spot separation in far-field grid samples
-    #     array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4),
-    # )
 
     # pprint(trap_config, expand_all=True)
     # pprint(trap_config_off_center, expand_all=True)
@@ -1138,6 +957,7 @@ def run_slmsuit_phase_retrieval():
     pprint(run_config, expand_all=True)
     pprint(solver_config, expand_all=True)
 
+    # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
     exp = HologramExperiment(run_config)
     exp.plot(base_dir="./results")
     exp.write_h5(base_dir="./results")
@@ -1160,163 +980,7 @@ def run_slmsuit_phase_retrieval():
     )
 
     logger.info(f"Done.")
-
-    """
-    slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
-
-    # NB construct tweezer array hologram and optimize it with GS algorithm
-    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
-    hologram = SpotHologram.make_rectangular_array(
-        run_config.slm_shape,
-        array_shape=run_config.array_shape,
-        array_pitch=run_config.array_pitch,
-        basis="knm",  # pixel coordinates in the far-field image plane
-        amp=slm_illumination,  # fixed Gaussian illumination
-        array_center=run_config.array_center,  # shift from zeroth order
-        phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
-    )
-
-    trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(
-        hologram.target, threshold_frac=0.0
-    )
     
-    trap_labels_jax = jnp.array(trap_labels_np)
-    crop_coords_jax = jnp.array(coords_np)
-
-    # NB desired farfield amplitude in the "knm" basis
-    target_intensity = np.abs(hologram.target) ** 2
-
-    # TODO
-    target_extent = get_trap_zoom(hologram.target)
-    x_min, x_max, y_min, y_max = target_extent
-
-    plot_scalar_field(
-        "./results/plots/gaussian_slm_illumination.pdf", 
-        slm_illumination, 
-        cbar_label="slm illumination"
-    )
-
-    plot_scalar_field(
-        "./results/plots/target_intensity.pdf",
-        target_intensity[y_min:y_max, x_min:x_max],
-        extent=target_extent,
-    )
-
-    # NB callback definition,
-    #    https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1473
-    hologram.optimize(
-        method=solver_config.method,
-        maxiter=solver_config.maxiter,
-        stat_groups=["computational_spot"],
-        verbose=False,
-    )
-
-    # NB get optimized slm phase and far-field intensity,
-    #    crop to show only the central region.
-    #
-    # NB current nearfield phase from the GPU shifted to [0, 2*pi].
-    slm_phase = hologram.get_phase()
-    ff_int = np.abs(hologram.get_farfield()) ** 2
-
-    stack_h, stack_w = 50, 50
-    stack_mean_similar_traps = reduce_stack_similar_traps(
-        ff_int, crop_coords_jax, stack_h, stack_w
-    )
-    # NB inter_uniformity=0.84553164
-    trap_metrics = compute_trap_metrics(ff_int, trap_labels_jax, num_traps)
-
-    # plot_trap_stack_mean(
-    #     "./results/plots/trap_stack_mean.pdf",
-    #     np.log(stack_mean_similar_traps + 1e-12),
-    # )
-
-    plot_scalar_field(
-        "./results/plots/trap_stack_mean.pdf",
-        np.log(stack_mean_similar_traps + 1e-12),
-    )
-    
-    artifacts, residual_int = extract_background_artifacts(
-        ff_int, target_intensity, max_artifacts=9
-    )
-
-    artifact_stacks = crop_artifact_stacks(
-        ff_int,
-        artifacts,
-        stack_h=stack_h,
-        stack_w=stack_w,
-    )
-
-    artifacts = label_slm_fuzz(artifacts, target_extent)
-
-    export_artifact_data_for_streamlit(
-        "./results/data/artifact_data.pkl", 
-        residual_int, 
-        artifacts, 
-        artifact_stacks, 
-        slm_shape=run_config.slm_shape,
-        array_shape=run_config.array_shape,
-        array_pitch=run_config.array_pitch,
-        array_center=run_config.array_center
-    )
-    
-    performance_metrics = compute_performance_metrics(ff_int, target_intensity)
-    write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
-
-    pprint(performance_metrics)
-
-    # cy, cx = ff_int.shape[0] // 2, ff_int.shape[1] // 2
-    # half = 130
-    # ff_crop = ff_int[cy - half : cy + half, cx - half : cx + half]
-
-    # extent = [cx - half, cx + half, cy - half, cy + half],
-
-    plot_phase_retrieval_results(
-        "./results/plots/phase_retrieval_results.pdf",
-        slm_phase,
-        ff_int[y_min:y_max, x_min:x_max],
-        target_extent,
-    )
-
-    # TODO stats etc.
-    header = run_config.copy()
-
-    # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
-    hdf5_path = f"./results/data/exercise_{solver_config.method.lower()}_{timestamp}.h5"
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=slm_illumination,
-        group_name="slm",
-        dataset_name="slm_illumination",
-    )
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=target_intensity,
-        group_name="target",
-        dataset_name="target_intensity",
-        **header,
-    )
-
-    # TODO better write of config.
-    write_hdf5(
-        filepath=hdf5_path,
-        data=slm_phase,
-        group_name="slm",
-        dataset_name="slm_phase",
-        wavelength=run_config.wavelength,
-        pixel_pitch=run_config.pixel_pitch,
-        maxiter=solver_config.maxiter,
-    )
-
-    write_hdf5(
-        filepath=hdf5_path,
-        data=ff_int,
-        group_name=solver_config.method.lower(),
-        dataset_name="inferred_farfield_intensity",
-    )
-    """
-
 
 def main():
     run_slmsuit_phase_retrieval()
