@@ -588,11 +588,10 @@ class RunConfig(ConfigMixin):
     trap_config: TrapConfig
     comment: Optional[str] = None
 
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
-
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
     
     def __getattr__(self, name):
         try:
@@ -606,6 +605,7 @@ class SolverConfig(ConfigMixin):
     maxiter: int = 200
 
     solver_backend : str | None = None
+    solver_runtime: float | None = None
 
     smooth_phase: bool = False
     smooth_sigma: int = 3 # pixels
@@ -617,11 +617,10 @@ class SolverConfig(ConfigMixin):
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
-
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 class HologramExperiment:
     _is_frozen = False
@@ -907,12 +906,17 @@ class HologramExperimentSolver:
     def optimize(self):
         logger.info(f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations.")
 
+        start_time = time.time()
+
         self.__hologram.optimize(
             method=self.config.method,
             maxiter=self.config.maxiter,
             stat_groups=["computational_spot"],
             verbose=False,
         )
+
+        self.config["solver_runtime"] = time.time() - start_time
+
 
     @property
     def target_intensity(self):
