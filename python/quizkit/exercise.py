@@ -1,9 +1,6 @@
-import ast
 import h5py
 import datetime
 import random
-import pickle
-
 import json
 from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional, Any
@@ -16,7 +13,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
 from scipy.ndimage import find_objects, label, binary_dilation
 from slmsuite.holography.algorithms import SpotHologram
-import matplotlib.gridspec as gridspec
 from pathlib import Path
 from functools import cached_property
 
@@ -520,7 +516,7 @@ class ConfigMixin:
 
 @dataclass
 class TrapConfig(ConfigMixin):
-    trap_config_id: int 
+    trap_type: str 
     array_shape: Tuple[int, int]
     array_pitch: Tuple[int, int]
     array_center: Optional[Tuple[float, float]] = None
@@ -880,7 +876,7 @@ class HologramExperimentSolver:
         )
 
         stack_mean_similar_traps = reduce_stack_similar_crops(
-            self.forward_intensity, self.exp.trap_coords, self.stack_h, self.stack_w
+            self.forward_intensity, self.exp.trap_coords, self.stack_h, self.stack_w, reducer=jnp.mean,
         )
         
         plot_scalar_field(
