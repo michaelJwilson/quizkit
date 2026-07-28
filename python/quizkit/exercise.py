@@ -466,7 +466,7 @@ if __name__ == "__main__":
     # NB desired farfield amplitude in the "knm" basis
     target_intensity = np.abs(hologram.target) ** 2
 
-    stack_h, stack_w = 25,25
+    stack_h, stack_w = 50,50
     stack_mean_similar_traps = reduce_stack_similar_traps(
         ff_int, crop_coords_jax, stack_h, stack_w
     )
