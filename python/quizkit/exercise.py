@@ -20,6 +20,7 @@ GS algorithm application via slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
+# NB slmsuite seeds on random, not numpy (but potentially cupy/cuda).
 random.seed(42)
 np.random.seed(42)
 
