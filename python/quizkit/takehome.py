@@ -613,6 +613,8 @@ class SolverConfig(ConfigMixin):
     loss_norm: str = "L2"  # {"L1", "L2"}
     learning_rate: float = 0.1
 
+    random_seed: int = 42
+
     # TODO HACK
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
@@ -891,6 +893,9 @@ class HologramExperimentSolver:
         self.stack_h = 50
         self.stack_w = 50
 
+        rng = np.random.default_rng(seed=self.config.random_seed)
+        phases = rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape)
+
         self.__hologram = SpotHologram.make_rectangular_array(
             self.exp.run_config.slm_shape,
             array_shape=self.exp.run_config.array_shape,
@@ -898,7 +903,7 @@ class HologramExperimentSolver:
             basis="knm",
             amp=self.exp.slm_illumination.copy(),
             array_center=self.exp.run_config.array_center,
-            phase=np.random.uniform(-np.pi, np.pi, self.exp.run_config.slm_shape),
+            phase=phases,
         )
 
         assert np.allclose(self.exp.target, self.__hologram.target)
