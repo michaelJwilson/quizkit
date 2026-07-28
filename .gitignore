@@ -4,3 +4,4 @@ __pycache__/
 quizkit.log
 results/
 runs/
+.aim/

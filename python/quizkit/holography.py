@@ -9,7 +9,7 @@ jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import optax
-from torch.utils.tensorboard import SummaryWriter
+from aim import Run
 
 from rich.pretty import pprint
 from quizkit.readers import read_hdf5
@@ -17,6 +17,12 @@ from quizkit.exercise import (
     plot_phase_retrieval_results,
     get_trap_zoom,
 )
+
+# TODO HACK
+import atexit
+import aim.ext.cleanup
+
+atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +264,7 @@ def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
         raise ValueError(f"Unknown solver method: {config.method}")
 
 
-# tensorboard --logdir=./runs
+# launch GUI with: aim up
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
@@ -300,36 +306,54 @@ if __name__ == "__main__":
         slm_illumination, target_amp, initial_phase, config
     )
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = f"./runs/{config.method}_optimization_{timestamp}"
-    os.makedirs(log_dir, exist_ok=True)
-    writer = SummaryWriter(log_dir=log_dir)
+    # ---------------------------------------------------------
+    # Aim Logging
+    # ---------------------------------------------------------
+    logger.info("Writing iteration metrics to Aim...")
+    run = Run(experiment=f"{config.method}_optimization")
+    run["hparams"] = config.__dict__
 
     for step_idx in range(config.maxiter):
         if "loss" in history:
-            writer.add_scalar("Loss/Total", history["loss"][step_idx].item(), step_idx)
+            run.track(
+                history["loss"][step_idx].item(),
+                name="Total",
+                step=step_idx,
+                context={"subset": "Loss"},
+            )
 
-        writer.add_scalar(
-            "Metrics/Efficiency", history["efficiency"][step_idx].item(), step_idx
+        run.track(
+            history["efficiency"][step_idx].item(),
+            name="Efficiency",
+            step=step_idx,
+            context={"subset": "Metrics"},
         )
-        writer.add_scalar(
-            "Metrics/Uniformity", history["uniformity"][step_idx].item(), step_idx
+        run.track(
+            history["uniformity"][step_idx].item(),
+            name="Uniformity",
+            step=step_idx,
+            context={"subset": "Metrics"},
         )
-        writer.add_scalar(
-            "Metrics/Ghost_Trap_Ratio",
+        run.track(
             history["ghost_trap_ratio"][step_idx].item(),
-            step_idx,
+            name="Ghost_Trap_Ratio",
+            step=step_idx,
+            context={"subset": "Metrics"},
         )
-        writer.add_scalar(
-            "Metrics/Stray_Light",
+        run.track(
             history["stray_light_fraction"][step_idx].item(),
-            step_idx,
+            name="Stray_Light",
+            step=step_idx,
+            context={"subset": "Metrics"},
         )
-        writer.add_scalar(
-            "Metrics/Pearson", history["pearson"][step_idx].item(), step_idx
+        run.track(
+            history["pearson"][step_idx].item(),
+            name="Pearson",
+            step=step_idx,
+            context={"subset": "Metrics"},
         )
 
-    writer.close()
+    run.close()
 
     performance_metrics = compute_performance_metrics(
         inferred_intensity, target_intensity
