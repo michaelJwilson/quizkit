@@ -912,11 +912,15 @@ class HologramExperimentSolver:
         )
 
     def extract_off_target_intensity(self):
+        # TODO
+        # exclusion_mask=~self.exp.trap_array_mask,
+        exclusion_mask = None
+
         artifacts, _ = extract_background_artifacts(
             self.forward_intensity, 
             self.exp.trap_labels, 
             exclusion_pad=15, 
-            exclusion_mask=~self.exp.trap_array_mask,
+            exclusion_mask=exclusion_mask,
             percentile_q=99.9
         )
 
