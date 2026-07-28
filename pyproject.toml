@@ -27,6 +27,8 @@ dependencies = [
     "optax",
     "slmsuite",
     "opencv-python",
+    "tensorboard",
+    "torch",
 ]
 
 [project.optional-dependencies]

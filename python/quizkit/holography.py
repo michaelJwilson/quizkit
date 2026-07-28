@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 import jax
 
-# Enable 64-bit precision globally (float64 / complex128)
 jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
@@ -12,7 +11,6 @@ import optax
 from rich.pretty import pprint
 from quizkit.readers import read_hdf5
 from quizkit.exercise import (
-    compute_performance_metrics,
     plot_phase_retrieval_results,
     get_trap_zoom,
 )
@@ -29,7 +27,9 @@ class SolverConfig:
     smooth_sigma: float = 2.0  # Sigma in pixels
 
     learning_rate: float = 0.1
-    lambda_uniformity: float = 0.0
+
+    initial_temp = 2. * jnp.pi 
+    anneal_rate = 0.1 # 10 iterations to reduce temperature by 1/e
 
 
 def get_gaussian_blur_otf(shape, sigma):
@@ -136,20 +136,30 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
     loss_and_grad = jax.value_and_grad(loss)
 
     @jax.jit
-    def gd_step(carry, _):
-        phase, opt_state = carry
+    def gd_step(carry, step_idx):
+        phase, opt_state, key = carry
+        
+        key, subkey = jax.random.split(key)
+        
         loss_val, grads = loss_and_grad(phase)
         updates, opt_state = optimizer.update(grads, opt_state, phase)
         new_phase = optax.apply_updates(phase, updates)
 
-        # NB bound phase
+        temperature = config.initial_temp * jnp.exp(-config.anneal_rate * step_idx)
+        noise = jax.random.normal(subkey, phase.shape) * temperature
+        new_phase = new_phase + noise
+
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-        return (new_phase, opt_state), loss_val
+        
+        return (new_phase, opt_state, key), loss_val
 
     opt_state = optimizer.init(initial_phase_native)
+    step_key = jax.random.PRNGKey(42)
 
-    (final_phase_native, _), _ = jax.lax.scan(
-        gd_step, (initial_phase_native, opt_state), jnp.arange(config.maxiter)
+    (final_phase_native, _, _), losses = jax.lax.scan(
+        gd_step, 
+        (initial_phase_native, opt_state, step_key), 
+        jnp.arange(config.maxiter)
     )
 
     final_complex_ff_native = propagate_ff_native(
@@ -173,6 +183,51 @@ def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
         return run_gd(source_amp, target_amp, initial_phase, config)
     else:
         raise ValueError(f"Unknown solver method: {config.method}")
+
+def compute_performance_metrics(ff_int, target_int):
+    ff_int = jnp.asarray(ff_int)
+    target_int = jnp.asarray(target_int)
+
+    signal_mask = target_int > 0.0
+    bg_mask = ~signal_mask
+
+    signal_vals = jnp.where(signal_mask, ff_int, 0.0)
+    bg_vals = jnp.where(bg_mask, ff_int, 0.0)
+
+    total_power = jnp.sum(ff_int)
+    signal_power = jnp.sum(signal_vals)
+    bg_power = jnp.sum(bg_vals)
+
+    efficiency = signal_power / (total_power + 1e-12)
+    stray_light_fraction = bg_power / (total_power + 1e-12)
+
+    signal_vals_nan = jnp.where(signal_mask, ff_int, jnp.nan)
+    
+    sig_min = jnp.nanmin(signal_vals_nan)
+    sig_max = jnp.nanmax(signal_vals_nan)
+
+    sig_constrast = sig_max / (sig_min + 1e-12)
+    uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
+
+    max_bg_intensity = jnp.max(bg_vals)
+    ghost_trap_ratio = max_bg_intensity / (sig_max + 1e-12)
+
+    ff_centered = ff_int - jnp.mean(ff_int)
+    target_centered = target_int - jnp.mean(target_int)
+
+    numerator = jnp.sum(ff_centered * target_centered)
+    denominator = jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2))
+
+    pearson = numerator / (denominator + 1e-12)
+
+    return {
+        "efficiency": efficiency,
+        "stray_light_fraction": stray_light_fraction,
+        "sig_constrast": sig_constrast,
+        "uniformity": uniformity,
+        "ghost_trap_ratio": ghost_trap_ratio,
+        "pearson": pearson,
+    }
 
 
 if __name__ == "__main__":
