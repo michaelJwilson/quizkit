@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional, Any
 
+import uuid # TODO
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -96,6 +97,8 @@ def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None,
         ax.set_yticks([])
         
     _add_colorbar(ax, im, cbar_label)
+
+    logger.info(f"Writing {plot_path}.")
     
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
@@ -373,6 +376,8 @@ def write_performance_metrics_tex(
 
     out_path = Path(filepath)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Writing {out_path}.")
     
     with open(out_path, "w") as f:
         f.write(latex)
@@ -564,6 +569,8 @@ class RunConfig(ConfigMixin):
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
+
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
     
     def __getattr__(self, name):
         try:
@@ -591,6 +598,8 @@ class SolverConfig(ConfigMixin):
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
+
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 class HologramExperiment:
     _is_frozen = False
@@ -1058,7 +1067,7 @@ def run_slmsuit_phase_retrieval():
         caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase."
     )
     
-    logger.info(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
+    logger.info(f"Done.")
 
     """
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
