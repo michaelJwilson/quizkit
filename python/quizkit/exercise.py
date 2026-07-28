@@ -522,17 +522,18 @@ def label_slm_fuzz(artifacts, target_extent):
 
 
 def export_artifact_data_for_streamlit(
-    filepath, residual_int, artifacts, artifact_stacks
+    filepath, residual_int, artifacts, artifact_stacks, slm_shape, array_shape, array_pitch, array_center, 
 ):
-    """
-    Serializes the background artifact arrays to disk for the Streamlit app.
-    """
     data_bundle = {
-        "residual_int": residual_int,
-        "artifacts": artifacts,
-        "artifact_stacks": artifact_stacks,
+        'residual_int': residual_int,
+        'artifacts': artifacts,
+        'artifact_stacks': artifact_stacks,
+        'slm_shape': SLM_SHAPE,
+        'array_shape': array_shape,
+        'array_pitch': array_pitch,
+        'array_center': array_center,
     }
-    with open(filepath, "wb") as f:
+    with open(filepath, 'wb') as f:
         pickle.dump(data_bundle, f)
     print(f"Artifact data exported to {filepath}")
 
@@ -671,7 +672,14 @@ if __name__ == "__main__":
     artifacts = label_slm_fuzz(artifacts, target_extent)
 
     export_artifact_data_for_streamlit(
-        "./results/data/artifact_data.pkl", residual_int, artifacts, artifact_stacks
+        "./results/data/artifact_data.pkl", 
+        residual_int, 
+        artifacts, 
+        artifact_stacks, 
+        slm_shape=SLM_SHAPE,
+        array_shape=ARRAY_SHAPE,
+        array_pitch=ARRAY_PITCH,
+        array_center=ARRAY_CENTER
     )
 
     exit(0)
