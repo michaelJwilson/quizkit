@@ -437,6 +437,7 @@ def reduce_stack_similar_crops(
 def extract_background_artifacts(
     forward_intensity, 
     trap_labels, 
+    exclusion_mask=None,
     exclusion_pad=15, 
     percentile_q=99.9, 
     max_artifacts=100
@@ -451,7 +452,10 @@ def extract_background_artifacts(
         trap_mask = binary_dilation(trap_labels > 0, structure=struct)
     else:
         trap_mask = (trap_labels > 0)
-        
+
+    if exclusion_mask is not None:
+        trap_mask = np.logical_or(trap_mask, exclusion_mask)
+
     bg_mask = ~trap_mask
     residual_int = forward_intensity * bg_mask
 
@@ -506,24 +510,6 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
     
     return trap_array_mask
 
-
-
-def export_artifact_data_for_streamlit(
-    filepath, residual_int, artifacts, artifact_stacks, slm_shape, array_shape, array_pitch, array_center, 
-):
-    data_bundle = {
-        'residual_int': residual_int,
-        'artifacts': artifacts,
-        'artifact_stacks': artifact_stacks,
-        'slm_shape': slm_shape,
-        'array_shape': array_shape,
-        'array_pitch': array_pitch,
-        'array_center': array_center,
-    }
-    with open(filepath, 'wb') as f:
-        pickle.dump(data_bundle, f)
-    print(f"Artifact data exported to {filepath}")
-"""
 class ConfigMixin:
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -602,7 +588,10 @@ class HologramExperiment:
 
         self.target = hologram.target.copy()
         self.target.flags.writeable = False
-        
+
+        self.trap_array_mask = get_trap_array_mask(self.run_config.slm_shape, self.run_config.array_shape, self.run_config.array_pitch, self.run_config.array_center, pad=25)
+        self.trap_array_mask.flags.writeable = False
+
         (
             trap_labels_np, 
             self.num_traps, 
@@ -637,7 +626,8 @@ class HologramExperiment:
         with h5py.File(h5_path, "r") as f:
             obj.slm_illumination = f["slm/slm_illumination"][:]
             obj.target = f["target/target"][:]
-            
+            obj.trap_array_mask = f["trap_array_mask/trap_array_mask"][:]
+
         obj.slm_illumination.flags.writeable = False
         obj.target.flags.writeable = False
 
@@ -651,6 +641,7 @@ class HologramExperiment:
         
         obj.trap_labels = jnp.array(trap_labels_np)
         obj.trap_coords = jnp.array(coords_np)
+        obj.trap_array_mask = jnp.array(obj.trap_array_mask)
         obj.crop_coords = obj.trap_coords
         
         obj._is_frozen = True
@@ -742,6 +733,12 @@ class HologramExperiment:
             dataset_name="target"
         )
 
+        write_hdf5(
+            filepath=hdf5_path,
+            data=self.trap_array_mask,
+            group_name="trap_array_mask",
+            dataset_name="trap_array_mask"
+        )
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     efficiency: float
@@ -919,6 +916,7 @@ class HologramExperimentSolver:
             self.forward_intensity, 
             self.exp.trap_labels, 
             exclusion_pad=15, 
+            exclusion_mask=~self.exp.trap_array_mask,
             percentile_q=99.9
         )
 
