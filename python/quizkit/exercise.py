@@ -404,7 +404,7 @@ if __name__ == "__main__":
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
     METHOD = "GS"  # {GS, WGS}
-    MAXITER = 30
+    MAXITER = 1 # TODO HACK
 
     config = {
         "wavelength": WAVELENGTH,
