@@ -1,9 +1,10 @@
+import os
 import datetime
 import random
 import pickle
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional
 
 import jax
@@ -15,6 +16,7 @@ from rich.pretty import pprint
 from scipy.ndimage import find_objects, gaussian_filter, label
 from slmsuite.holography.algorithms import SpotHologram
 import matplotlib.gridspec as gridspec
+from path import pathlib
 
 from quizkit.writers import write_hdf5
 
@@ -418,9 +420,6 @@ def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
 
 
 def label_slm_fuzz(artifacts, array_shape, array_pitch, array_center, slm_shape, pad=25):
-    """
-    Flags background artifacts that fall within the target trap bounding box as 'slm fuzz'.
-    """
     center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
 
     if array_center is not None:
@@ -472,7 +471,6 @@ class ConfigMixin:
     def to_json(self, indent: int = 4) -> str:
         return json.dumps(self.to_dict(), indent=indent)
 
-
 @dataclass
 class TrapConfig(ConfigMixin):
     trap_config_id: int 
@@ -487,6 +485,11 @@ class RunConfig(ConfigMixin):
     pixel_pitch: float
     slm_shape: Tuple[int, int]
     trap_config: TrapConfig
+    comment: Optional[str] = None
+
+    timestamp: str = field(
+        default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
     
     def __getattr__(self, name):
         try:
@@ -511,8 +514,84 @@ class SolverConfig(ConfigMixin):
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 
+class HologramExperiment:
+    def __init__(self, run_config: RunConfig):
+        self.run_config = run_config
+        self.slm_illumination = get_gaussian_slm_illumination(self.run_config.slm_shape)
+        
+        self.hologram = SpotHologram.make_rectangular_array(
+            self.run_config.slm_shape,
+            array_shape=self.run_config.array_shape,
+            array_pitch=self.run_config.array_pitch,
+            basis="knm",
+            amp=self.slm_illumination,
+            array_center=self.run_config.array_center,
+            phase=np.random.uniform(-np.pi, np.pi, self.run_config.slm_shape),
+        )
+        
+        (
+            self.trap_labels, 
+            self.num_traps, 
+            self.trap_coords, 
+            self.trap_h, 
+            self.trap_w
+        ) = encode_target_traps(self.hologram.target, threshold_frac=0.0)
+        
+        self.trap_labels = jnp.array(self.trap_labels)
+        self.trap_coords = jnp.array(self.trap_coords)
+        self.crop_coords = jnp.array(self.coords_np)
+
+    @property
+    def target_intensity(self):
+        return np.abs(self.hologram.target) ** 2
+
+    @property
+    def __target_extent(self):
+        return get_trap_zoom(self.hologram.target)
+
+    def plot(self, plot_dir: str = "./results/plots"):
+        """Plots the initial SLM illumination and the zoomed target plane."""
+        output_dir = pathlib.Path(plot_dir)
+        
+        plot_scalar_field(
+            output_dir / "gaussian_slm_illumination.pdf",
+            self.slm_illumination, 
+            cbar_label="slm illumination"
+        )
+
+        x_min, x_max, y_min, y_max = self.__target_extent
+        plot_scalar_field(
+            output_dir / "target_intensity.pdf",
+            self.target_intensity[y_min:y_max, x_min:x_max],
+            extent=self.__target_extent,
+            cbar_label="target intensity"
+        )
+
+    def write_h5(self, output_dir):
+        header = self.run_config.copy()
+    
+        hdf5_path = f"{output_dir}/hologram_experiment_{self.run_config.timestamp}.h5"
+    
+        write_hdf5(
+            filepath=hdf5_path,
+            data=slm_illumination,
+            group_name="slm",
+            dataset_name="slm_illumination",
+        )
+    
+        write_hdf5(
+            filepath=hdf5_path,
+            data=target_intensity,
+            group_name="target",
+            dataset_name="target_intensity",
+            **header,
+        )
+
+
 
 if __name__ == "__main__":
+    slm_shape=(1200, 1920) # (height, width) in pixels,
+
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
     #
@@ -526,14 +605,23 @@ if __name__ == "__main__":
        array_center=None
     )
 
+    trap_config_off_center = TrapConfig(
+        trap_config_id=1,
+        array_shape=(10, 10),
+        array_pitch=(20, 20), # spot separation in far-field grid samples
+        array_center=(3. * slm_shape[1], 2. * slm_shape[0])/4, 
+    )
+
     pprint(trap_config, expand_all=True)
+    pprint(trap_config_off_center, expand_all=True)
 
     # NB 10x10 optical tweezer array sampling a 200x200 image.
     run_config = RunConfig(
        wavelength=780e-9, #m
        pixel_pitch=8.0e-6, #m
-       slm_shape=(1200, 1920),  # (height, width) in pixels,
+       slm_shape=slm_shape,
        trap_config=trap_config,
+       comment="default slm suite run"
     )
 
     pprint(run_config, expand_all=True)
@@ -548,12 +636,6 @@ if __name__ == "__main__":
 
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
-    plot_scalar_field(
-       "./results/plots/gaussian_slm_illumination.pdf", 
-        slm_illumination, 
-        cbar_label="slm illumination"
-    )
-
     # NB construct tweezer array hologram and optimize it with GS algorithm
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
     hologram = SpotHologram.make_rectangular_array(
@@ -566,6 +648,13 @@ if __name__ == "__main__":
         phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
     )
 
+    trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(
+        hologram.target, threshold_frac=0.0
+    )
+    
+    trap_labels_jax = jnp.array(trap_labels_np)
+    crop_coords_jax = jnp.array(coords_np)
+
     # NB desired farfield amplitude in the "knm" basis
     target_intensity = np.abs(hologram.target) ** 2
 
@@ -574,17 +663,16 @@ if __name__ == "__main__":
     x_min, x_max, y_min, y_max = target_extent
 
     plot_scalar_field(
+        "./results/plots/gaussian_slm_illumination.pdf", 
+        slm_illumination, 
+        cbar_label="slm illumination"
+    )
+
+    plot_scalar_field(
         "./results/plots/target_intensity.pdf",
         target_intensity[y_min:y_max, x_min:x_max],
         extent=target_extent,
     )
-
-    trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(
-        hologram.target, threshold_frac=0.0
-    )
-
-    trap_labels_jax = jnp.array(trap_labels_np)
-    crop_coords_jax = jnp.array(coords_np)
 
     # NB callback definition,
     #    https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1473
@@ -595,27 +683,11 @@ if __name__ == "__main__":
         verbose=False,
     )
 
-    # hologram.plot_nearfield(cbar=True)
-
-    # NB see https://github.com/holodyne/slmsuite/blob/main/slmsuite/holography/algorithms/_stats.py
-    # hologram.stats.keys() == ['method', 'flags', 'stats']
-    # hologram.stats["stats"].keys() == ['computational_spot']
-    # hologram.stats["stats"]["computational_spot"].keys() == ['pkpk_err', 'std_err', 'uniformity', 'efficiency']
-    # stats = hologram.stats["stats"]["computational_spot"]
-
-    # limits=zoombox
-    # hologram.plot_farfield(cbar=True, title='FF Amp');
-
-    # NB see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L7
-    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_stats.py#L729
-    # hologram.plot_stats(show=True)
-
     # NB get optimized slm phase and far-field intensity,
     #    crop to show only the central region.
     #
     # NB current nearfield phase from the GPU shifted to [0, 2*pi].
     slm_phase = hologram.get_phase()
-
     ff_int = np.abs(hologram.get_farfield()) ** 2
 
     stack_h, stack_w = 50, 50
@@ -634,8 +706,6 @@ if __name__ == "__main__":
         "./results/plots/trap_stack_mean.pdf",
         np.log(stack_mean_similar_traps + 1e-12),
     )
-
-    exit(0)
 
     artifacts, residual_int = extract_background_artifacts(
         ff_int, target_intensity, max_artifacts=9
@@ -661,8 +731,6 @@ if __name__ == "__main__":
         array_center=run_config.array_center
     )
 
-    exit(0)
-
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
     write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
 
@@ -685,19 +753,7 @@ if __name__ == "__main__":
     header = run_config.copy()
 
     # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     hdf5_path = f"./results/data/exercise_{solver_config.method.lower()}_{timestamp}.h5"
-
-    # TODO better write of config.
-    write_hdf5(
-        filepath=hdf5_path,
-        data=slm_phase,
-        group_name="slm",
-        dataset_name="slm_phase",
-        wavelength=run_config.wavelength,
-        pixel_pitch=run_config.pixel_pitch,
-        maxiter=solver_config.maxiter,
-    )
 
     write_hdf5(
         filepath=hdf5_path,
@@ -712,6 +768,17 @@ if __name__ == "__main__":
         group_name="target",
         dataset_name="target_intensity",
         **header,
+    )
+
+    # TODO better write of config.
+    write_hdf5(
+        filepath=hdf5_path,
+        data=slm_phase,
+        group_name="slm",
+        dataset_name="slm_phase",
+        wavelength=run_config.wavelength,
+        pixel_pitch=run_config.pixel_pitch,
+        maxiter=solver_config.maxiter,
     )
 
     write_hdf5(
