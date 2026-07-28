@@ -263,37 +263,93 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
     }
 
 
-def write_metrics_table(filepath: str, metrics: dict) -> str:
-    num_cols = len(metrics)
-    col_alignment = "l" * num_cols
+def write_performance_metrics_tex(
+    filepath: str | pathlib.Path,
+    metrics_by_run: dict[str, dict], 
+    caption: str = "Computed performance metrics for the optimized SLM phase.", 
+    label: str = "tab:hologram_metrics"
+) -> None:
+    """
+    Generates and writes a LaTeX table comparing performance metrics across solver runs.
+    
+    Args:
+        filepath: The destination path for the .tex file.
+        metrics_by_run: Dictionary mapping run names to their metric dictionaries.
+                        e.g., {"gs": dict, "wgs": dict}.
+        caption: Table caption string.
+        label: Table LaTeX label.
+    """
+    # Descriptions for the PerformanceMetrics properties
+    descriptions = {
+        "efficiency": "Fraction of total power within target trap regions",
+        "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
+        "pearson": "Pearson correlation of forward intensity and target intensity",
+        "trap_cv": "Coefficient of variation of integrated trap powers",
+        "trap_mean": "Mean integrated trap power",
+        "trap_min": "Minimum integrated trap power",
+        "trap_max": "Maximum integrated trap power",
+        "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
+        "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
+        "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
+        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity"
+    }
 
-    headers = [f"\\textbf{{{k.replace('_', '\\_')}}}" for k in metrics.keys()]
-    header_row = " & ".join(headers) + " \\\\"
+    run_keys = list(metrics_by_run.keys())
+    n_runs = len(run_keys)
 
-    type_row = " & ".join(["\\texttt{float}"] * num_cols) + " \\\\"
+    # 1. Determine Column Headers and Tabular Alignment
+    # Always use the provided key(s), capitalized
+    headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+        
+    c_cols = "c" * n_runs
+    tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
 
-    values = [f"{v:.4f}" for v in metrics.values()]
-    value_row = " & ".join(values) + " \\\\"
+    # 2. Build Header Row
+    header_row = " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"]) + " \\\\"
 
-    latex_string = f"""\\begin{{table}}[htbp]
+    # 3. Build Data Rows
+    # Grab the metric names from the first run (excluding the raw array)
+    metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
+
+    rows = []
+    for m_name in metric_names:
+        escaped_m_name = m_name.replace("_", "\\_")
+        row_parts = [f"\\texttt{{{escaped_m_name}}}"]
+
+        for key in run_keys:
+            val = metrics_by_run[key].get(m_name, np.nan)
+            
+            if isinstance(val, float) and not np.isnan(val):
+                if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
+                    row_parts.append(f"{val:.2e}")
+                else:
+                    row_parts.append(f"{val:.4f}")
+            else:
+                row_parts.append(str(val))
+
+        desc = descriptions.get(m_name, "")
+        row_parts.append(desc)
+        rows.append(" & ".join(row_parts) + " \\\\")
+
+    latex = f"""\\begin{{table}}[htbp]
 \\centering
 \\small
-\\begin{{tabular}}{{{col_alignment}}}
+{tabular_def}
 \\toprule
 {header_row}
-{type_row}
 \\midrule
-{value_row}
+{chr(10).join(rows)}
 \\bottomrule
 \\end{{tabular}}
-\\caption{{Computed performance metrics for the optimized SLM phase mask.}}
-\\label{{tab:hologram_metrics}}
+\\caption{{{caption}}}
+\\label{{{label}}}
 \\end{{table}}"""
 
-    with open(filepath, "w") as f:
-        f.write(latex_string)
-
-    return latex_string
+    out_path = pathlib.Path(filepath)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(out_path, "w") as f:
+        f.write(latex)
 
 
 def get_trap_zoom(target_intensity, pad=25):
@@ -814,79 +870,17 @@ class HologramExperimentSolver:
     def forward_intensity(self):
         return np.abs(self.__hologram.get_farfield()) ** 2
 
-    def compute_solver_metrics(self):
-        forward_intensity = self.forward_intensity
-        target_intensity = self.target_intensity
-        trap_labels = self.exp.trap_labels
-
-        flat_forward_intensity = forward_intensity.ravel()
-        flat_trap_labels = trap_labels.ravel()
-
-        # NB sum of forward intensity within each trap
-        trap_powers = jnp.bincount(
-            flat_trap_labels, 
-            weights=flat_forward_intensity, 
-            length=self.exp.num_traps + 1
-        )[1:]
-        
-        trap_powers = np.asarray(trap_powers)
-
-        trap_min = float(np.min(trap_powers))
-        trap_max = float(np.max(trap_powers))
-
-        trap_mean = float(np.mean(trap_powers))
-        trap_med = float(np.median(trap_powers))
-
-        trap_std = float(np.std(trap_powers))
-
-        # NB coefficient of variation: 
-        trap_cv = trap_std / (trap_mean + 1e-12)
-
-        total_power = float(np.sum(flat_forward_intensity))
-
-        # NB total power in the signal region (traps) and background region (ghost traps)
-        sig_power = float(np.sum(trap_powers))
-        bg_power = total_power - sig_power
-
-        bg_mask = (trap_labels == 0)
-        max_bg = float(np.max(flat_forward_intensity[bg_mask]))
-        med_bg = float(np.median(flat_forward_intensity[bg_mask]))
-        mean_bg = float(np.mean(flat_forward_intensity[bg_mask]))
-
-        ff_centered = forward_intensity - np.mean(flat_forward_intensity)
-        target_centered = target_intensity - np.mean(target_intensity)
-        pearson = float(np.sum(ff_centered * target_centered) / 
-                       (np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2)) + 1e-12))
-
-        return {
-            "efficiency": sig_power / total_power,
-            "stray_light_fraction": bg_power / total_power,
-            "pearson": pearson,
-            "trap_cv": trap_cv,
-            "trap_mean": trap_mean,
-            "trap_min": trap_min,
-            "trap_max": trap_max,
-            "trap_uniformity_minmax": 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
-            "ghost_to_mean_ratio": max_bg / (trap_mean + 1e-12),
-            "ghost_to_dimmest_ratio": max_bg / (trap_min + 1e-12),
-            "signal_to_background_floor": trap_mean / (mean_bg + 1e-12),
-            "trap_powers": trap_powers,
-        }
-
     def plot(self, base_dir: str = "./results"):
         pass
 
-    def save(self, base_dir: str = "./results"):
+    def write_h5(self, base_dir: str = "./results"):
         out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
         with open(out_dir / "solver_config.json", "w") as f:
             f.write(self.config.to_json())
             
-        if hasattr(self, 'performance_metrics'):
-            write_metrics_table(out_dir / "metrics.tex", self.performance_metrics)
-
-        hdf5_path = out_dir / "phase_solution.h5"
+        hdf5_path = out_dir / "phase_solution_{self.config.timestamp}.h5"
 
         write_hdf5(
             filepath=hdf5_path,
