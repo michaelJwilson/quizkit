@@ -1050,19 +1050,22 @@ def run_slmsuit_phase_retrieval():
     # `"knm"``, this is ``(shape[1], shape[0])/2``.
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    trap_config = TrapConfig(
-        trap_type="on_axis",
-        array_shape=(10, 10),
-        array_pitch=(20, 20), # spot separation in far-field grid samples
-        array_center=None
-    )
+    # trap_config = TrapConfig(
+    #     trap_type="on_axis",
+    #     array_shape=(10, 10),
+    #     array_pitch=(20, 20), # spot separation in far-field grid samples
+    #     array_center=None
+    # )
 
-    trap_config_off_center = TrapConfig(
-        trap_type="off_axis",
-        array_shape=(10, 10),
-        array_pitch=(20, 20), # spot separation in far-field grid samples
-        array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4), 
-    )
+    trap_config = TrapConfigs.ON_AXIS.to_config()
+    trap_config_off_center = TrapConfigs.OFF_AXIS.to_config()
+
+    # trap_config_off_center = TrapConfig(
+    #     trap_type="off_axis",
+    #     array_shape=(10, 10),
+    #     array_pitch=(20, 20), # spot separation in far-field grid samples
+    #     array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4), 
+    # )
 
     # pprint(trap_config, expand_all=True)
     # pprint(trap_config_off_center, expand_all=True)
