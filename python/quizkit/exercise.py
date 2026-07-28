@@ -1,4 +1,4 @@
-import os
+import ast
 import datetime
 import random
 import pickle
@@ -13,10 +13,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
-from scipy.ndimage import find_objects, gaussian_filter, label
+from scipy.ndimage import find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
 import matplotlib.gridspec as gridspec
 from path import pathlib
+from functools import cached_property
 
 from quizkit.writers import write_hdf5
 
@@ -515,11 +516,14 @@ class SolverConfig(ConfigMixin):
     anneal_rate: float = 0.05
 
 class HologramExperiment:
+    _is_frozen = False
+
     def __init__(self, run_config: RunConfig):
         self.run_config = run_config
-        self.slm_illumination = get_gaussian_slm_illumination(self.run_config.slm_shape)
+        self.slm_illumination = get_gaussian_slm_illumination(self.run_config.slm_shape)        
+        self.slm_illumination.flags.writeable = False
         
-        self.hologram = SpotHologram.make_rectangular_array(
+        hologram = SpotHologram.make_rectangular_array(
             self.run_config.slm_shape,
             array_shape=self.run_config.array_shape,
             array_pitch=self.run_config.array_pitch,
@@ -528,63 +532,126 @@ class HologramExperiment:
             array_center=self.run_config.array_center,
             phase=np.random.uniform(-np.pi, np.pi, self.run_config.slm_shape),
         )
+
+        self.target = hologram.target.copy()
+        self.target.flags.writeable = False
         
         (
-            self.trap_labels, 
+            trap_labels_np, 
             self.num_traps, 
-            self.trap_coords, 
+            coords_np, 
             self.trap_h, 
             self.trap_w
-        ) = encode_target_traps(self.hologram.target, threshold_frac=0.0)
+        ) = encode_target_traps(self.target, threshold_frac=0.0)
         
-        self.trap_labels = jnp.array(self.trap_labels)
-        self.trap_coords = jnp.array(self.trap_coords)
-        self.crop_coords = jnp.array(self.coords_np)
+        self.trap_labels = jnp.array(trap_labels_np)
+        self.trap_coords = jnp.array(coords_np)
 
-    @property
+        # TODO DEPRECATE
+        self.crop_coords = self.trap_coords
+        
+        self._is_frozen = True
+
+    @classmethod
+    def from_run_h5(cls, run_dir: str | pathlib.Path):
+        run_dir = pathlib.Path(run_dir)
+        
+        with open(run_dir / "run_config.json", "r") as f:
+            data = json.load(f)
+            trap_data = data.pop("trap_config")
+            data["trap_config"] = TrapConfig(**trap_data)
+            run_config = RunConfig(**data)
+            
+        obj = cls.__new__(cls)
+        obj.run_config = run_config
+        
+        h5_path = run_dir / "experiment.h5"
+
+        with h5py.File(h5_path, "r") as f:
+            obj.slm_illumination = f["slm/slm_illumination"][:]
+            obj.target = f["target/target"][:]
+            
+        obj.slm_illumination.flags.writeable = False
+        obj.target.flags.writeable = False
+
+        (
+            trap_labels_np, 
+            obj.num_traps, 
+            coords_np, 
+            obj.trap_h, 
+            obj.trap_w
+        ) = encode_target_traps(obj.target, threshold_frac=0.0)
+        
+        obj.trap_labels = jnp.array(trap_labels_np)
+        obj.trap_coords = jnp.array(coords_np)
+        obj.crop_coords = obj.trap_coords
+        
+        obj._is_frozen = True
+        return obj
+
+    def __setattr__(self, key, value):
+        if getattr(self, "_is_frozen", False):
+            cls_attr = getattr(type(self), key, None)
+            if isinstance(cls_attr, cached_property):
+                super().__setattr__(key, value)
+                return
+            raise AttributeError(
+                f"'{type(self).__name__}' is immutable. Cannot modify attribute '{key}'."
+            )
+        super().__setattr__(key, value)
+
+    @cached_property
     def target_intensity(self):
-        return np.abs(self.hologram.target) ** 2
+        intensity = np.abs(self.target) ** 2
+        intensity.flags.writeable = False
+        return intensity
 
-    @property
-    def __target_extent(self):
-        return get_trap_zoom(self.hologram.target)
+    @cached_property
+    def target_extent(self):
+        return get_trap_zoom(self.target)
 
-    def plot(self, plot_dir: str = "./results/plots"):
-        """Plots the initial SLM illumination and the zoomed target plane."""
-        output_dir = pathlib.Path(plot_dir)
+    def _get_run_dir(self, base_dir: str) -> pathlib.Path:
+        return pathlib.Path(base_dir) / f"run_{self.run_config.timestamp}"
+
+    def plot(self, base_dir: str = "./results"):
+        run_dir = self._get_run_dir(base_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
         
         plot_scalar_field(
-            output_dir / "gaussian_slm_illumination.pdf",
+            run_dir / "gaussian_slm_illumination.pdf",
             self.slm_illumination, 
             cbar_label="slm illumination"
         )
 
-        x_min, x_max, y_min, y_max = self.__target_extent
+        x_min, x_max, y_min, y_max = self.target_extent
         plot_scalar_field(
-            output_dir / "target_intensity.pdf",
+            run_dir / "target_intensity.pdf",
             self.target_intensity[y_min:y_max, x_min:x_max],
-            extent=self.__target_extent,
+            extent=self.target_extent,
             cbar_label="target intensity"
         )
 
-    def write_h5(self, output_dir):
-        header = self.run_config.copy()
-    
-        hdf5_path = f"{output_dir}/hologram_experiment_{self.run_config.timestamp}.h5"
-    
+    def save(self, base_dir: str = "./results"):
+        run_dir = self._get_run_dir(base_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        
+        with open(run_dir / "run_config.json", "w") as f:
+            f.write(self.run_config.to_json())
+            
+        hdf5_path = run_dir / "experiment.h5"
+        
         write_hdf5(
             filepath=hdf5_path,
-            data=slm_illumination,
+            data=self.slm_illumination,
             group_name="slm",
-            dataset_name="slm_illumination",
+            dataset_name="slm_illumination"
         )
     
         write_hdf5(
             filepath=hdf5_path,
-            data=target_intensity,
+            data=self.target,
             group_name="target",
-            dataset_name="target_intensity",
-            **header,
+            dataset_name="target"
         )
 
 
