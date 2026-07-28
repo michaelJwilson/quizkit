@@ -1033,8 +1033,6 @@ if __name__ == "__main__":
     
     print(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
 
-    exit(0)
-
     """
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
@@ -1108,7 +1106,7 @@ if __name__ == "__main__":
         "./results/plots/trap_stack_mean.pdf",
         np.log(stack_mean_similar_traps + 1e-12),
     )
-    """
+    
     artifacts, residual_int = extract_background_artifacts(
         ff_int, target_intensity, max_artifacts=9
     )
@@ -1132,7 +1130,7 @@ if __name__ == "__main__":
         array_pitch=run_config.array_pitch,
         array_center=run_config.array_center
     )
-    """
+    
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
     write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
 
