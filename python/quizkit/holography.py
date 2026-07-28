@@ -29,6 +29,8 @@ class SolverConfig:
     smooth_phase: bool = False  
     smooth_sigma: float = 2.0  
 
+    loss_norm : str = "L2"  # {"L1", "L2"}
+
     learning_rate: float = 0.1
 
     initial_epsilon: float = 0.5
@@ -171,10 +173,17 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
             jnp.mean(target_intensity_native) + 1e-12
         )
 
-        loss_val = jnp.mean(jnp.abs(norm_inferred - norm_target)) 
+        diff = norm_inferred - norm_target
+
+        if config.loss_norm.upper() == "L1":
+            loss_val = jnp.mean(jnp.abs(diff))
+        elif config.loss_norm.upper() == "L2":
+            loss_val = jnp.mean(diff ** 2)
+        else:
+            raise ValueError(f"Unsupported loss norm: {config.loss_norm}")
+
         loss_val += smooth_lambda * smooth_phase_regularization(phase)
 
-        # Return inferred intensity as auxiliary data to avoid recomputing it
         return loss_val, inferred_intensity
 
     # has_aux=True tells JAX the second return value is auxiliary, not differentiated
