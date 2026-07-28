@@ -4,6 +4,7 @@ import random
 import logging
 import json
 import time
+from enum import Enum
 from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional, Any
 
@@ -558,6 +559,25 @@ class TrapConfig(ConfigMixin):
     array_center: Optional[Tuple[float, float]] = None
 
 
+# TODO
+class TrapConfigs(Enum):
+    # NB format=(trap_config_id, array_shape, array_pitch, array_center)
+    ON_AXIS = (0, (10, 10), (20, 20), None)
+    OFF_AXIS = (1, (10, 10), (20, 20), (3. * 1920 / 4, 2. * 1200 / 4))
+
+    @property
+    def int_id(self) -> int:
+        return self.value[0]
+
+    def to_config(self) -> TrapConfig:
+        config_id, array_shape, array_pitch, array_center = self.value
+        return TrapConfig(
+            trap_config_id=config_id,
+            array_shape=array_shape,
+            array_pitch=array_pitch,
+            array_center=array_center,
+        )
+
 @dataclass
 class RunConfig(ConfigMixin):
     wavelength: float
@@ -678,6 +698,9 @@ class HologramExperiment:
         obj.crop_coords = obj.trap_coords
         
         obj._is_frozen = True
+
+        logger.info(f"Loaded HologramExperiment from {run_dir}.")
+
         return obj
 
     def __setattr__(self, key, value):
@@ -746,12 +769,16 @@ class HologramExperiment:
     def write_h5(self, base_dir: str = "./results"):
         run_dir = self._get_run_dir(base_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        logger.info(f"Writing run configuration to {run_dir / 'run_config.json'}.")
+
         with open(run_dir / "run_config.json", "w") as f:
             f.write(self.run_config.to_json())
             
         hdf5_path = run_dir / "experiment.h5"
-        
+
+        logger.info(f"Writing hologram experiment to {hdf5_path}.")
+
         write_hdf5(
             filepath=hdf5_path,
             data=self.slm_illumination,
@@ -876,6 +903,8 @@ class HologramExperimentSolver:
         assert np.allclose(self.exp.target, self.__hologram.target)
 
     def optimize(self):
+        logger.info(f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations.")
+
         self.__hologram.optimize(
             method=self.config.method,
             maxiter=self.config.maxiter,
@@ -972,14 +1001,21 @@ class HologramExperimentSolver:
         out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        logger.info(f"Writing solver configuration to {out_dir / 'solver_config.json'}.")
+
         with open(out_dir / "solver_config.json", "w") as f:
             f.write(self.config.to_json())
+
+        logger.info(f"Writing performance metrics to {out_dir / 'performance_metrics.json'}.")
             
         metrics = PerformanceMetrics.from_solver(self)
+
         with open(out_dir / "performance_metrics.json", "w") as f:
             f.write(metrics.to_json())
             
         hdf5_path = out_dir / f"phase_solution_{self.config.timestamp}.h5"
+
+        logger.info(f"Writing HologramExperimentSovler results to {hdf5_path}.")
 
         write_hdf5(
             filepath=hdf5_path,
