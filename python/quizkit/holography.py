@@ -132,7 +132,6 @@ def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
             new_phase = jnp.angle(blurred_complex)
 
-        # Track metrics for GS as well
         inferred_intensity = jnp.abs(complex_ff) ** 2
         metrics = compute_performance_metrics(inferred_intensity, target_amp_native**2)
 
@@ -161,6 +160,9 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
 
     target_intensity_native = target_amp_native**2
     optimizer = optax.adam(learning_rate=config.learning_rate)
+
+    slm_shape = source_amp.shape
+    blur_otf = get_gaussian_blur_otf(slm_shape, config.smooth_sigma)
 
     def loss_fn(phase):
         complex_phasor = jnp.exp(1j * phase)
@@ -210,6 +212,11 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
         explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
         
         new_phase = jnp.where(explore_mask, random_phases, new_phase)
+
+        if config.smooth_phase:
+            complex_phase = jnp.exp(1j * new_phase)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+            new_phase = jnp.angle(blurred_complex)
 
         new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
@@ -280,7 +287,7 @@ if __name__ == "__main__":
         key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
     )
 
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=200, smooth_phase=True, smooth_sigma=5)
     logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
 
     final_phase, inferred_intensity, history = solve_hologram(
