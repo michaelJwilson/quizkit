@@ -16,6 +16,7 @@ from quizkit.readers import read_hdf5
 from quizkit.exercise import (
     plot_phase_retrieval_results,
     get_trap_zoom,
+    SolverConfig,
 )
 
 # TODO HACK
@@ -25,24 +26,6 @@ import aim.ext.cleanup
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class SolverConfig:
-    method: str = "GD"  # {"GS", "GD"}
-    maxiter: int = 200
-
-    smooth_phase: bool = False
-    smooth_sigma: float = 2.0
-
-    loss_norm: str = "L2"  # {"L1", "L2"}
-
-    learning_rate: float = 0.1
-
-    # TODO HACK
-    initial_epsilon: float = 0.0
-    anneal_rate: float = 0.05
-
 
 def get_gaussian_blur_otf(shape, sigma):
     H, W = shape

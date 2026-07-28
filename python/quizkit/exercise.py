@@ -2,6 +2,10 @@ import datetime
 import random
 import pickle
 
+import json
+from dataclasses import dataclass, asdict
+from typing import Tuple, Optional
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -453,38 +457,69 @@ def export_artifact_data_for_streamlit(
         pickle.dump(data_bundle, f)
     print(f"Artifact data exported to {filepath}")
 
+@dataclass
+class RunConfig:
+    wavelength: float
+    pixel_pitch: float
+    slm_shape: Tuple[int, int] = (1200, 1920)
+    array_shape: Tuple[int, int] = (10, 10)
+    array_pitch: Tuple[int, int] = (20, 20)
+    array_center: Optional[Tuple[float, float]] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def to_json(self, indent: int = 4) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+@dataclass
+class SolverConfig:
+    method: str  # {"GS", "GS", "GD"}
+    maxiter: int = 200
+
+    solver_backend : str | None = None
+
+    smooth_phase: bool = False
+    smooth_sigma: int = 3 # pixels
+
+    loss_norm: str = "L2"  # {"L1", "L2"}
+    learning_rate: float = 0.1
+
+    # TODO HACK
+    initial_epsilon: float = 0.0
+    anneal_rate: float = 0.05
+
 
 if __name__ == "__main__":
-    WAVELENGTH = 780e-9  # m
-    PIXEL_PITCH = 8.0e-6  # m
-    SLM_SHAPE = (1200, 1920)  # (height, width) in pixels
-
-    # NB 10x10 optical tweezer array sampling a 200x200 image.
-    ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
-    ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
-
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
     #
     # `"knm"``, this is ``(shape[1], shape[0])/2``.
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    ARRAY_CENTER = None
+    
+    # NB 10x10 optical tweezer array sampling a 200x200 image.
+    run_config = RunConfig(
+       wavelength=780e-9, #m
+       pixel_pitch=8.0e-6, #m
+       slm_shape=(1200, 1920),  # (height, width) in pixels,
+       array_shape=(10, 10),
+       array_pitch=(20, 20), # spot separation in far-field grid samples
+       array_center=None
+    )
 
-    METHOD = "GS"  # {GS, WGS}
-    MAXITER = 1  # TODO HACK
+    solver_config = SolverConfig(
+        method="GS", # {GS, WGS}
+        maxiter=200,
+        solver_backend="slm_suite",
+    )
 
-    config = {
-        "wavelength": WAVELENGTH,
-        "pixel_pitch": PIXEL_PITCH,
-        "slm_shape": SLM_SHAPE,
-        "array_shape": ARRAY_SHAPE,
-        "array_pitch": ARRAY_PITCH,
-    }
+    pprint(run_config, expand_all=True)
+    pprint(solver_config, expand_all=True)
 
-    slm_illumination = get_gaussian_slm_illumination(SLM_SHAPE)
+    exit(0)
 
-    # compute_metrics(WAVELENGTH, PIXEL_PITCH, SLM_SHAPE)
+    slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
     # NB plot Gaussian slm amplitude profile
     plot_slm_illumination(
@@ -494,13 +529,13 @@ if __name__ == "__main__":
     # NB construct tweezer array hologram and optimize it with GS algorithm
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
     hologram = SpotHologram.make_rectangular_array(
-        SLM_SHAPE,
-        array_shape=ARRAY_SHAPE,
-        array_pitch=ARRAY_PITCH,
+        run_config.slm_shape,
+        array_shape=run_config.array_shape,
+        array_pitch=run_config.array_pitch,
         basis="knm",  # pixel coordinates in the far-field image plane
         amp=slm_illumination,  # fixed Gaussian illumination
-        array_center=ARRAY_CENTER,  # shift from zeroth order
-        phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE),  # reproducibility required.
+        array_center=run_config.array_center,  # shift from zeroth order
+        phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
     )
 
     # TODO
@@ -523,8 +558,8 @@ if __name__ == "__main__":
     # NB callback definition,
     #    https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L1473
     hologram.optimize(
-        method=METHOD,
-        maxiter=MAXITER,
+        method=solver_config.method,
+        maxiter=solver_config.maxiter,
         stat_groups=["computational_spot"],
         verbose=False,
     )
@@ -585,10 +620,10 @@ if __name__ == "__main__":
         residual_int, 
         artifacts, 
         artifact_stacks, 
-        slm_shape=SLM_SHAPE,
-        array_shape=ARRAY_SHAPE,
-        array_pitch=ARRAY_PITCH,
-        array_center=ARRAY_CENTER
+        slm_shape=run_config.slm_shape,
+        array_shape=run_config.array_shape,
+        array_pitch=run_config.array_pitch,
+        array_center=run_config.array_center
     )
 
     exit(0)
@@ -612,11 +647,11 @@ if __name__ == "__main__":
     )
 
     # TODO stats etc.
-    header = config.copy()
+    header = run_config.copy()
 
     # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    hdf5_path = f"./results/data/exercise_{METHOD.lower()}_{timestamp}.h5"
+    hdf5_path = f"./results/data/exercise_{solver_config.method.lower()}_{timestamp}.h5"
 
     # TODO better write of config.
     write_hdf5(
@@ -624,9 +659,9 @@ if __name__ == "__main__":
         data=slm_phase,
         group_name="slm",
         dataset_name="slm_phase",
-        wavelength=WAVELENGTH,
-        pixel_pitch=PIXEL_PITCH,
-        maxiter=MAXITER,
+        wavelength=run_config.wavelength,
+        pixel_pitch=run_config.pixel_pitch,
+        maxiter=solver_config.maxiter,
     )
 
     write_hdf5(
@@ -647,7 +682,7 @@ if __name__ == "__main__":
     write_hdf5(
         filepath=hdf5_path,
         data=ff_int,
-        group_name=METHOD.lower(),
+        group_name=solver_config.method.lower(),
         dataset_name="inferred_farfield_intensity",
     )
 
