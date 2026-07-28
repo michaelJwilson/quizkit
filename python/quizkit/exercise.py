@@ -989,7 +989,6 @@ if __name__ == "__main__":
     solver.plot(base_dir="./results")
     solver.write_h5(base_dir="./results")
 
-    """
     metrics = PerformanceMetrics.from_solver(solver)
 
     pprint(metrics, expand_all=True)
@@ -1001,7 +1000,7 @@ if __name__ == "__main__":
     )
     
     print(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
-    """
+
     exit(0)
 
     slm_shape=(1200, 1920) # (height, width) in pixels,
