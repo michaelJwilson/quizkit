@@ -69,6 +69,7 @@ def smooth_phase_regularization(phase):
     penalty_y = 1.0 - jnp.cos(diff_y)
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
+
 # TODO
 def compute_performance_metrics(ff_int, target_int):
     ff_int = jnp.asarray(ff_int)
