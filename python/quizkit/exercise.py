@@ -17,7 +17,7 @@ from rich.pretty import pprint
 from scipy.ndimage import find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
 import matplotlib.gridspec as gridspec
-from path import pathlib
+from pathlib import Path
 from functools import cached_property
 
 from quizkit.writers import write_hdf5
@@ -269,7 +269,7 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
 
 
 def write_performance_metrics_tex(
-    filepath: str | pathlib.Path,
+    filepath: str | Path,
     metrics_by_run: dict[str, dict], 
     caption: str = "Computed performance metrics for the optimized SLM phase.", 
     label: str = "tab:hologram_metrics"
@@ -350,7 +350,7 @@ def write_performance_metrics_tex(
 \\label{{{label}}}
 \\end{{table}}"""
 
-    out_path = pathlib.Path(filepath)
+    out_path = Path(filepath)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     
     with open(out_path, "w") as f:
@@ -535,7 +535,11 @@ def export_artifact_data_for_streamlit(
 """
 class ConfigMixin:
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        for key, value in data.items():
+            if isinstance(value, np.ndarray):
+                data[key] = value.tolist()
+        return data
 
     def to_json(self, indent: int = 4) -> str:
         return json.dumps(self.to_dict(), indent=indent)
@@ -568,7 +572,7 @@ class RunConfig(ConfigMixin):
 
 @dataclass
 class SolverConfig(ConfigMixin):
-    method: str  # {"GS", "GS", "GD"}
+    method: str  # {"GS", "WGS", "GD"}
     maxiter: int = 200
 
     solver_backend : str | None = None
@@ -625,8 +629,8 @@ class HologramExperiment:
         self._is_frozen = True
 
     @classmethod
-    def from_run_h5(cls, run_dir: str | pathlib.Path):
-        run_dir = pathlib.Path(run_dir)
+    def from_run_h5(cls, run_dir: str | Path):
+        run_dir = Path(run_dir)
         
         with open(run_dir / "run_config.json", "r") as f:
             data = json.load(f)
@@ -702,8 +706,8 @@ class HologramExperiment:
             "farfield_res_x_rad": float(farfield_res_x),
         }
 
-    def _get_run_dir(self, base_dir: str) -> pathlib.Path:
-        return pathlib.Path(base_dir) / f"run_{self.run_config.timestamp}"
+    def _get_run_dir(self, base_dir: str) -> Path:
+        return Path(base_dir) / f"run_{self.run_config.timestamp}"
 
     def plot(self, base_dir: str = "./results"):
         run_dir = self._get_run_dir(base_dir)
@@ -760,7 +764,7 @@ class PerformanceMetrics(ConfigMixin):
     ghost_to_mean_ratio: float
     ghost_to_dimmest_ratio: float
     signal_to_background_floor: float
-    trap_powers: np.ndarray
+    trap_powers: np.ndarray = field(repr=False)
 
     @classmethod
     def compute(
@@ -776,7 +780,6 @@ class PerformanceMetrics(ConfigMixin):
         flat_forward_intensity = ff_int.ravel()
         flat_trap_labels = np.asarray(trap_labels).ravel()
 
-        # Integrated trap power reduction via JAX bincount
         trap_powers_jax = jnp.bincount(
             flat_trap_labels,
             weights=flat_forward_intensity,
@@ -784,7 +787,6 @@ class PerformanceMetrics(ConfigMixin):
         )[1:]
         trap_powers = np.asarray(trap_powers_jax, dtype=np.float64)
 
-        # Trap Power Statistics
         trap_min = float(np.min(trap_powers))
         trap_max = float(np.max(trap_powers))
         trap_mean = float(np.mean(trap_powers))
@@ -792,18 +794,15 @@ class PerformanceMetrics(ConfigMixin):
 
         trap_cv = float(trap_std / (trap_mean + 1e-12))
 
-        # Global Power Distributions
         total_power = float(np.sum(flat_forward_intensity))
         sig_power = float(np.sum(trap_powers))
         bg_power = total_power - sig_power
 
-        # Background Floor & Ghost Trap Analysis
         bg_mask = flat_trap_labels == 0
         bg_intensities = flat_forward_intensity[bg_mask]
         max_bg = float(np.max(bg_intensities))
         mean_bg = float(np.mean(bg_intensities))
 
-        # Global Field Pearson Correlation
         ff_centered = ff_int - np.mean(flat_forward_intensity)
         target_centered = target_int - np.mean(target_int)
         numerator = np.sum(ff_centered * target_centered)
@@ -876,38 +875,44 @@ class HologramExperimentSolver:
         return np.abs(self.__hologram.get_farfield()) ** 2
 
     def plot(self, base_dir: str = "./results"):
+        out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
+        plot_dir = out_dir / "plots"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+
         plot_scalar_field(
-            plot_path="./results/plots/slm_phase.pdf",
-            field=slm_phase,
+            plot_path=plot_dir / "slm_phase.pdf",
+            field=self.slm_phase,
             cmap="twilight",
             title="slm",
             cbar_label="phase [rad]",
             xlabel=r"$x [\Delta]$",
             ylabel=r"$y [\Delta]$",
             interpolation="nearest"
-            )
+        )
 
-        # TODO HARDCODE
         stack_h, stack_w = 50, 50
         stack_mean_similar_traps = reduce_stack_similar_traps(
             self.forward_intensity, self.exp.trap_coords, stack_h, stack_w
         )
         
         plot_scalar_field(
-            f"{base_dir}/plots/trap_stack_forward_ln_intensity.pdf",
-            np.log(stack_mean_similar_traps + 1e-12),
+            plot_path=plot_dir / "trap_stack_forward_ln_intensity.pdf",
+            field=np.log(stack_mean_similar_traps + 1e-12),
         )
 
+        x_min, x_max, y_min, y_max = self.target_extent
+        ff_int = self.forward_intensity 
+
         plot_scalar_field(
-            plot_path="./results/plots/farfield_intensity.pdf",
+            plot_path=plot_dir / "farfield_intensity.pdf",
             field=ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max(),
             cmap="inferno",
             title="far-field",
-            extent=target_extent,
+            extent=self.target_extent,
             cbar_label="intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
-            origin="lower"  # Crucial: prevents the array from rendering upside down
+            origin="lower"
         )
 
     def write_h5(self, base_dir: str = "./results"):
@@ -917,7 +922,11 @@ class HologramExperimentSolver:
         with open(out_dir / "solver_config.json", "w") as f:
             f.write(self.config.to_json())
             
-        hdf5_path = out_dir / "phase_solution_{self.config.timestamp}.h5"
+        metrics = PerformanceMetrics.from_solver(self)
+        with open(out_dir / "performance_metrics.json", "w") as f:
+            f.write(metrics.to_json())
+            
+        hdf5_path = out_dir / f"phase_solution_{self.config.timestamp}.h5"
 
         write_hdf5(
             filepath=hdf5_path,
@@ -935,6 +944,66 @@ class HologramExperimentSolver:
 
 
 if __name__ == "__main__":
+    slm_shape = (1200, 1920)
+
+    trap_config = TrapConfig(
+        trap_config_id=0,
+        array_shape=(10, 10),
+        array_pitch=(20, 20),
+        array_center=None
+    )
+
+    trap_config_off_center = TrapConfig(
+        trap_config_id=1,
+        array_shape=(10, 10),
+        array_pitch=(20, 20),
+        array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4),
+    )
+
+    # pprint(trap_config, expand_all=True)
+    # pprint(trap_config_off_center, expand_all=True)
+
+    run_config = RunConfig(
+        wavelength=780e-9,
+        pixel_pitch=8.0e-6,
+        slm_shape=slm_shape,
+        trap_config=trap_config,
+        comment="default slm suite run"
+    )
+
+    solver_config = SolverConfig(
+        method="GS", 
+        maxiter=200,
+        solver_backend="slm_suite",
+    )
+
+    pprint(run_config, expand_all=True)
+    pprint(solver_config, expand_all=True)
+
+    exp = HologramExperiment(run_config)
+    exp.plot(base_dir="./results")
+    exp.write_h5(base_dir="./results")
+    """    
+    solver = HologramExperimentSolver(exp, solver_config)
+    solver.optimize()
+
+    solver.plot(base_dir="./results")
+    solver.save(base_dir="./results")
+
+    metrics = PerformanceMetrics.from_solver(solver)
+
+    pprint(metrics, expand_all=True)
+    
+    write_performance_metrics_tex(
+        filepath=exp._get_run_dir("./results") / f"phase_retrieval/{solver.config.timestamp}" / "performance_metrics.tex",
+        metrics_by_run={solver.config.method: metrics.to_dict()},
+        caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase."
+    )
+    
+    print(f"\nOptimization complete. All data saved to: {exp._get_run_dir('./results') / f'phase_retrieval/{solver.config.timestamp}'}")
+    """
+    exit(0)
+
     slm_shape=(1200, 1920) # (height, width) in pixels,
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
