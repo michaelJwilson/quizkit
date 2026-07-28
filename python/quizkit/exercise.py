@@ -665,16 +665,16 @@ class HologramExperimentSolver:
         self.config = config
 
         self.__hologram = SpotHologram.make_rectangular_array(
-            run_config.slm_shape,
-            array_shape=run_config.array_shape,
-            array_pitch=run_config.array_pitch,
-            basis="knm",  # pixel coordinates in the far-field image plane
-            amp=slm_illumination,  # fixed Gaussian illumination
-            array_center=run_config.array_center,  # shift from zeroth order
-            phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
+            self.exp.run_config.slm_shape,
+            array_shape=self.exp.run_config.array_shape,
+            array_pitch=self.exp.run_config.array_pitch,
+            basis="knm",
+            amp=self.exp.slm_illumination,
+            array_center=self.exp.run_config.array_center,
+            phase=np.random.uniform(-np.pi, np.pi, self.exp.run_config.slm_shape),
         )
 
-        assert np.all(self.exp.target == self.__hologram.target)
+        assert np.allclose(self.exp.target, self.__hologram.target)
 
     def optimize(self):
         self.__hologram.optimize(
@@ -686,7 +686,7 @@ class HologramExperimentSolver:
 
     @property
     def target_intensity(self):
-        return self.exp.intensity
+        return self.exp.target_intensity
     
     @property
     def target_extent(self):
@@ -701,19 +701,19 @@ class HologramExperimentSolver:
         return np.abs(self.__hologram.get_farfield()) ** 2
 
     def plot(self, base_dir: str = "./results"):
-        run_dir = self.exp._get_run_dir(base_dir)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        pass
 
     def save(self, base_dir: str = "./results"):
-        run_dir = self.exp._get_run_dir(base_dir)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(run_dir / f"phase_retrieval/{self.config.timestamp}/solver_config.json", "w") as f:
+        with open(out_dir / "solver_config.json", "w") as f:
             f.write(self.config.to_json())
             
-        write_metrics_table(run_dir / f"phase_retrieval/{self.config.timestamp}/metrics.tex", self.performance_metrics)
+        if hasattr(self, 'performance_metrics'):
+            write_metrics_table(out_dir / "metrics.tex", self.performance_metrics)
 
-        hdf5_path = run_dir / f"phase_retrieval/{self.config.timestamp}/phase_solution.h5"
+        hdf5_path = out_dir / "phase_solution.h5"
 
         write_hdf5(
             filepath=hdf5_path,
@@ -724,7 +724,7 @@ class HologramExperimentSolver:
 
         write_hdf5(
             filepath=hdf5_path,
-            data=self.ff_int,
+            data=self.forward_intensity,
             group_name=self.config.method.lower(),
             dataset_name="inferred_farfield_intensity",
         )
