@@ -1,4 +1,5 @@
 import logging
+import datetime
 import os
 from dataclasses import dataclass
 
@@ -238,7 +239,7 @@ def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
     else:
         raise ValueError(f"Unknown solver method: {config.method}")
 
-
+# tensorboard --logdir=./runs
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
@@ -271,7 +272,7 @@ if __name__ == "__main__":
         key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
     )
 
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
+    config = SolverConfig(method="GD", maxiter=50, smooth_phase=False, smooth_sigma=5)
     logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
 
     # Now returning history dictionary accumulated via lax.scan
@@ -279,7 +280,8 @@ if __name__ == "__main__":
         slm_illumination, target_amp, initial_phase, config
     )
 
-    log_dir = f"./runs/{config.method}_optimization"
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = f"./runs/{config.method}_optimization_{timestamp}"
     os.makedirs(log_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
     logger.info(f"Writing iteration metrics to TensorBoard at {log_dir}...")
