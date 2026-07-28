@@ -51,14 +51,19 @@ def _add_colorbar(ax, im, label=None):
     ax.figure.colorbar(im, cax=cax, label=label)
 
 def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None, 
-                      cbar_label=None, hide_ticks=False, figsize=(5, 3.2)):
+                      cbar_label=None, hide_ticks=False, figsize=(5, 3.2),
+                      xlabel=None, ylabel=None, **imshow_kwargs):
     fig, ax = plt.subplots(figsize=figsize)
     
-    im = ax.imshow(field, cmap=cmap, extent=extent)
+    im = ax.imshow(field, cmap=cmap, extent=extent, **imshow_kwargs)
     ax.set_aspect("equal")
     
     if title:
-        ax.set_title(title, fontsize=10)
+        ax.set_title(title, fontsize=14)  # Match your phase retrieval titlesize
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
     if hide_ticks:
         ax.set_xticks([])
         ax.set_yticks([])
@@ -391,7 +396,7 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
 
 
 def reduce_stack_similar_traps(
-    inferred_intensity,
+    forward_intensity,
     center_coords,
     stack_h,
     stack_w,
@@ -399,12 +404,11 @@ def reduce_stack_similar_traps(
     reducer=jnp.mean,
 ):
     def crop_single(coord):
-        # Shift back from the center to find the top-left corner of the desired window
         start_y = coord[0] - (stack_h // 2)
         start_x = coord[1] - (stack_w // 2)
 
         return jax.lax.dynamic_slice(
-            inferred_intensity, (start_y, start_x), (stack_h, stack_w)
+            forward_intensity, (start_y, start_x), (stack_h, stack_w)
         )
 
     # Shape: (N, stack_h, stack_w)
@@ -426,10 +430,10 @@ def reduce_stack_similar_traps(
 
 
 def extract_background_artifacts(
-    ff_int, target_intensity, threshold_frac=0.25, max_artifacts=9
+    forward_intensity, target_intensity, threshold_frac=0.25, max_artifacts=9
 ):
     bg_mask = target_intensity == 0.0
-    residual_int = ff_int * bg_mask
+    residual_int = forward_intensity * bg_mask
 
     artifact_threshold = residual_int.max() * threshold_frac
     binary_artifacts = residual_int > artifact_threshold
@@ -483,7 +487,7 @@ def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
 
     return np.array(stacks)
 
-
+"""
 def label_slm_fuzz(artifacts, array_shape, array_pitch, array_center, slm_shape, pad=25):
     center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
 
@@ -528,7 +532,7 @@ def export_artifact_data_for_streamlit(
     with open(filepath, 'wb') as f:
         pickle.dump(data_bundle, f)
     print(f"Artifact data exported to {filepath}")
-
+"""
 class ConfigMixin:
     def to_dict(self) -> dict:
         return asdict(self)
@@ -704,19 +708,20 @@ class HologramExperiment:
     def plot(self, base_dir: str = "./results"):
         run_dir = self._get_run_dir(base_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "plots").mkdir(parents=True, exist_ok=True)
         
         plot_scalar_field(
-            run_dir / "gaussian_slm_illumination.pdf",
-            self.slm_illumination, 
-            cbar_label="slm illumination"
+            run_dir / "plots" / "gaussian_slm_illumination.pdf",
+            np.log(self.slm_illumination + 1e-12),
+            cbar_label="ln. slm illumination"
         )
 
         x_min, x_max, y_min, y_max = self.target_extent
         plot_scalar_field(
-            run_dir / "target_intensity.pdf",
-            self.target_intensity[y_min:y_max, x_min:x_max],
+            run_dir / "plots" / "target_intensity.pdf",
+            np.log(self.target_intensity[y_min:y_max, x_min:x_max] + 1e-12),
             extent=self.target_extent,
-            cbar_label="target intensity"
+            cbar_label="ln. target intensity"
         )
 
     def write_h5(self, base_dir: str = "./results"):
@@ -871,7 +876,39 @@ class HologramExperimentSolver:
         return np.abs(self.__hologram.get_farfield()) ** 2
 
     def plot(self, base_dir: str = "./results"):
-        pass
+        plot_scalar_field(
+            plot_path="./results/plots/slm_phase.pdf",
+            field=slm_phase,
+            cmap="twilight",
+            title="slm",
+            cbar_label="phase [rad]",
+            xlabel=r"$x [\Delta]$",
+            ylabel=r"$y [\Delta]$",
+            interpolation="nearest"
+            )
+
+        # TODO HARDCODE
+        stack_h, stack_w = 50, 50
+        stack_mean_similar_traps = reduce_stack_similar_traps(
+            self.forward_intensity, self.exp.trap_coords, stack_h, stack_w
+        )
+        
+        plot_scalar_field(
+            f"{base_dir}/plots/trap_stack_forward_ln_intensity.pdf",
+            np.log(stack_mean_similar_traps + 1e-12),
+        )
+
+        plot_scalar_field(
+            plot_path="./results/plots/farfield_intensity.pdf",
+            field=ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max(),
+            cmap="inferno",
+            title="far-field",
+            extent=target_extent,
+            cbar_label="intensity [a.u.]",
+            xlabel=r"$k_n$ [knm]",
+            ylabel=r"$k_m$ [knm]",
+            origin="lower"  # Crucial: prevents the array from rendering upside down
+        )
 
     def write_h5(self, base_dir: str = "./results"):
         out_dir = self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.timestamp}"
@@ -1015,6 +1052,7 @@ if __name__ == "__main__":
         np.log(stack_mean_similar_traps + 1e-12),
     )
 
+    """
     artifacts, residual_int = extract_background_artifacts(
         ff_int, target_intensity, max_artifacts=9
     )
@@ -1038,6 +1076,7 @@ if __name__ == "__main__":
         array_pitch=run_config.array_pitch,
         array_center=run_config.array_center
     )
+    """
 
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
     write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
