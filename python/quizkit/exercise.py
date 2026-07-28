@@ -604,7 +604,7 @@ class HologramExperiment:
             array_shape=self.run_config.array_shape,
             array_pitch=self.run_config.array_pitch,
             basis="knm",
-            amp=self.slm_illumination,
+            amp=self.slm_illumination.copy(),
             array_center=self.run_config.array_center,
             phase=np.random.uniform(-np.pi, np.pi, self.run_config.slm_shape),
         )
@@ -843,7 +843,7 @@ class HologramExperimentSolver:
             array_shape=self.exp.run_config.array_shape,
             array_pitch=self.exp.run_config.array_pitch,
             basis="knm",
-            amp=self.exp.slm_illumination,
+            amp=self.exp.slm_illumination.copy(),
             array_center=self.exp.run_config.array_center,
             phase=np.random.uniform(-np.pi, np.pi, self.exp.run_config.slm_shape),
         )
@@ -983,13 +983,13 @@ if __name__ == "__main__":
     exp = HologramExperiment(run_config)
     exp.plot(base_dir="./results")
     exp.write_h5(base_dir="./results")
-    """    
+
     solver = HologramExperimentSolver(exp, solver_config)
     solver.optimize()
-
     solver.plot(base_dir="./results")
-    solver.save(base_dir="./results")
+    solver.write_h5(base_dir="./results")
 
+    """
     metrics = PerformanceMetrics.from_solver(solver)
 
     pprint(metrics, expand_all=True)
