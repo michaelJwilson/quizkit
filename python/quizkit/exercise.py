@@ -25,10 +25,6 @@ random.seed(42)
 np.random.seed(42)
 
 
-def get_uniform_slm_illumination(slm_shape):
-    return np.ones(slm_shape, dtype=np.float32)
-
-
 def get_gaussian_slm_illumination(slm_shape):
     # NB construct source amplitude profile
     x = np.arange(slm_shape[1]) - (slm_shape[1] - 1) / 2
@@ -72,6 +68,24 @@ def plot_target_intensity(plot_path, target_intensity, target_extent=None):
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300)
+
+
+def plot_trap_stack_mean(plot_path, trap_stack_mean):
+    fig, ax = plt.subplots(figsize=(4, 4))
+
+    im = ax.imshow(trap_stack_mean, cmap="inferno")
+    ax.set_aspect("equal")
+    ax.set_title("Mean Trap Profile", fontsize=10)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax, label="Forward Intensity")
+
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
 
 
 def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=None):
@@ -200,6 +214,31 @@ def compute_performance_metrics(ff_int, target_int):
         "pearson": float(pearson),
     }
 
+def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
+    """
+    Computes inter/intra contrast metrics using a single 2D integer mask.
+    Args:
+        inferred_intensity: (H, W) array of forward intensity.
+        trap_mask: (H, W) static integer array.
+        num_traps: Static integer.
+    """
+    flat_intensity = inferred_intensity.ravel()
+    flat_labels = trap_mask.ravel()
+
+    trap_powers = jnp.bincount(
+        flat_labels, weights=flat_intensity, length=num_traps + 1
+    )[1:]
+
+    mean_power = jnp.mean(trap_powers)
+    inter_uniformity = (jnp.max(trap_powers) - jnp.min(trap_powers)) / (
+        2 * mean_power + 1e-12
+    )
+
+    return {
+        "inter_uniformity": inter_uniformity,
+        "trap_powers": trap_powers,
+    }
+
 
 def write_metrics_table(filepath: str, metrics: dict) -> str:
     num_cols = len(metrics)
@@ -234,29 +273,6 @@ def write_metrics_table(filepath: str, metrics: dict) -> str:
     return latex_string
 
 
-def smooth_slm_array(array, sigma=200):
-    # TODO cupy support.
-    device_array = np.asarray(array)
-
-    # NB sigma [pixels]
-    #    see https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html
-    #    see https://shimat.github.io/opencvsharp_docs/html/7b0301d7-322d-a554-8d3f-32fd8ca0ee50.htm
-    # return gaussian_filter(device_array, sigma=sigma)
-    #
-    # for bordertypes, see
-    #     https://shimat.github.io/opencvsharp_docs/html/040d5c3f-bd31-f5ff-76c8-106304d8135c.htm
-    # return cv2.GaussianBlur(
-    #     device_array,
-    #     ksize=(0, 0),
-    #     sigmaX=sigma,
-    #     sigmaY=sigma
-    # )
-    device_array = np.asarray(array)
-    complex_field = np.exp(1j * device_array)
-
-    return gaussian_filter(complex_field, sigma=sigma, mode="wrap")
-
-
 def get_trap_zoom(target_intensity, pad=25):
     trap_coords = np.argwhere(target_intensity > 0)
 
@@ -287,39 +303,12 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
         trap_h = max(trap_h, s[0].stop - s[0].start)
         trap_w = max(trap_w, s[1].stop - s[1].start)
 
-    # FIX: Compute the integer center of the bounding box
     for s in slices:
         center_y = (s[0].start + s[0].stop) // 2
         center_x = (s[1].start + s[1].stop) // 2
         coords.append((center_y, center_x))
 
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
-
-
-def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
-    """
-    Computes inter/intra contrast metrics using a single 2D integer mask.
-    Args:
-        inferred_intensity: (H, W) array of forward intensity.
-        trap_mask: (H, W) static integer array.
-        num_traps: Static integer.
-    """
-    flat_intensity = inferred_intensity.ravel()
-    flat_labels = trap_mask.ravel()
-
-    trap_powers = jnp.bincount(
-        flat_labels, weights=flat_intensity, length=num_traps + 1
-    )[1:]
-
-    mean_power = jnp.mean(trap_powers)
-    inter_uniformity = (jnp.max(trap_powers) - jnp.min(trap_powers)) / (
-        2 * mean_power + 1e-12
-    )
-
-    return {
-        "inter_uniformity": inter_uniformity,
-        "trap_powers": trap_powers,
-    }
 
 
 def reduce_stack_similar_traps(
@@ -355,24 +344,6 @@ def reduce_stack_similar_traps(
         reduced_profile = reducer(trap_stack, axis=0)
 
     return reduced_profile
-
-
-def plot_trap_stack_mean(plot_path, trap_stack_mean):
-    fig, ax = plt.subplots(figsize=(4, 4))
-
-    im = ax.imshow(trap_stack_mean, cmap="inferno")
-    ax.set_aspect("equal")
-    ax.set_title("Mean Trap Profile", fontsize=10)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax, label="Forward Intensity")
-
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
-    plt.close(fig)
 
 
 def extract_background_artifacts(
@@ -434,91 +405,35 @@ def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
     return np.array(stacks)
 
 
-def plot_artifact_analysis(plot_path, residual_int, artifacts, artifact_stacks):
-    """
-    Creates a dual plot: Left = Log map of residual light, Right = Grid of artifact stacks.
-    """
-    num_arts = len(artifacts)
-    if num_arts == 0:
-        print("No background artifacts found above threshold.")
-        return
-
-    fig = plt.figure(figsize=(12, 5))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1.2, 1])
-
-    # --- LEFT: Map of Residual Light ---
-    ax_map = fig.add_subplot(gs[0])
-
-    # Log scale helps visualize faint artifacts and the 0th order simultaneously
-    im = ax_map.imshow(np.log(residual_int + 1e-12), cmap="inferno")
-    ax_map.set_title("Residual Background Light Map", fontsize=12)
-
-    total_bg_power = np.sum(residual_int)
-
-    # Annotate the map
-    for i, art in enumerate(artifacts):
-        cy, cx, power = art["cy"], art["cx"], art["power"]
-        rel_power = (power / total_bg_power) * 100  # Percentage of total stray light
-
-        # Mark center
-        ax_map.plot(cx, cy, "rx", markersize=8)
-
-        # Label: ID, (X, Y), and % power
-        label_text = f"#{i+1}\npx:({cx},{cy})\n{rel_power:.1f}% bg"
-        ax_map.text(
-            cx + 15,
-            cy,
-            label_text,
-            color="white",
-            fontsize=8,
-            va="center",
-            bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=2),
-        )
-
-    ax_map.set_xticks([])
-    ax_map.set_yticks([])
-
-    divider = make_axes_locatable(ax_map)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax, label="Log Intensity")
-
-    # --- RIGHT: Stacks Grid ---
-    # Dynamically size the grid (e.g., 9 artifacts -> 3x3 grid)
-    grid_size = int(np.ceil(np.sqrt(num_arts)))
-    gs_right = gs[1].subgridspec(grid_size, grid_size, wspace=0.1, hspace=0.1)
-
-    for i, (art, stack) in enumerate(zip(artifacts, artifact_stacks)):
-        row = i // grid_size
-        col = i % grid_size
-        ax_stack = fig.add_subplot(gs_right[row, col])
-
-        ax_stack.imshow(stack, cmap="inferno")
-        ax_stack.set_title(f"Artifact #{i+1}", fontsize=9, pad=3)
-        ax_stack.set_xticks([])
-        ax_stack.set_yticks([])
-
-        # Draw a subtle crosshair at the center of the crop
-        ch, cw = stack.shape[0] // 2, stack.shape[1] // 2
-        # ax_stack.plot(cw, ch, 'r+', markersize=5, alpha=0.5)
-
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
-    plt.close(fig)
-
-
-def label_slm_fuzz(artifacts, target_extent):
+def label_slm_fuzz(artifacts, array_shape, array_pitch, array_center, slm_shape, pad=25):
     """
     Flags background artifacts that fall within the target trap bounding box as 'slm fuzz'.
-    target_extent should be (x_min, x_max, y_min, y_max).
     """
-    x_min, x_max, y_min, y_max = target_extent
+    center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
+
+    if array_center is not None:
+        center_x += array_center[0]
+        center_y += array_center[1]
+
+    Ny, Nx = array_shape
+    dy, dx = array_pitch
+
+    x_half_width = (Nx - 1) / 2.0 * dx
+    y_half_height = (Ny - 1) / 2.0 * dy
+
+    x_min = center_x - x_half_width - pad
+    x_max = center_x + x_half_width + pad
+    y_min = center_y - y_half_height - pad
+    y_max = center_y + y_half_height + pad
+
     for art in artifacts:
         cx, cy = art["cx"], art["cy"]
-        # Check if the artifact center is inside the target bounding box
+
         if (x_min <= cx <= x_max) and (y_min <= cy <= y_max):
             art["is_fuzz"] = True
         else:
             art["is_fuzz"] = False
+            
     return artifacts
 
 
@@ -661,13 +576,6 @@ if __name__ == "__main__":
         artifacts,
         stack_h=stack_h,
         stack_w=stack_w,
-    )
-
-    plot_artifact_analysis(
-        "./results/plots/artifact_analysis.pdf",
-        residual_int,
-        artifacts,
-        artifact_stacks,
     )
 
     artifacts = label_slm_fuzz(artifacts, target_extent)
