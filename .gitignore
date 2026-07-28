@@ -3,3 +3,4 @@ oxidized/target/
 __pycache__/
 quizkit.log
 results/
+runs/
