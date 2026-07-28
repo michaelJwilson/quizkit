@@ -944,20 +944,26 @@ class HologramExperimentSolver:
 
 
 if __name__ == "__main__":
-    slm_shape = (1200, 1920)
+    slm_shape=(1200, 1920) # (height, width) in pixels,
 
+    # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
+    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
+    #
+    # `"knm"``, this is ``(shape[1], shape[0])/2``.
+    # ``"kxy"``, this is ``(0,0)``.
+    # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
     trap_config = TrapConfig(
         trap_config_id=0,
         array_shape=(10, 10),
-        array_pitch=(20, 20),
+        array_pitch=(20, 20), # spot separation in far-field grid samples
         array_center=None
     )
 
     trap_config_off_center = TrapConfig(
         trap_config_id=1,
         array_shape=(10, 10),
-        array_pitch=(20, 20),
-        array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4),
+        array_pitch=(20, 20), # spot separation in far-field grid samples
+        array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4), 
     )
 
     # pprint(trap_config, expand_all=True)
@@ -1003,50 +1009,7 @@ if __name__ == "__main__":
 
     exit(0)
 
-    slm_shape=(1200, 1920) # (height, width) in pixels,
-
-    # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
-    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
-    #
-    # `"knm"``, this is ``(shape[1], shape[0])/2``.
-    # ``"kxy"``, this is ``(0,0)``.
-    # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    trap_config = TrapConfig(
-       trap_config_id=0,
-       array_shape=(10, 10),
-       array_pitch=(20, 20), # spot separation in far-field grid samples
-       array_center=None
-    )
-
-    trap_config_off_center = TrapConfig(
-        trap_config_id=1,
-        array_shape=(10, 10),
-        array_pitch=(20, 20), # spot separation in far-field grid samples
-        array_center=(3. * slm_shape[1], 2. * slm_shape[0])/4, 
-    )
-
-    pprint(trap_config, expand_all=True)
-    pprint(trap_config_off_center, expand_all=True)
-
-    # NB 10x10 optical tweezer array sampling a 200x200 image.
-    run_config = RunConfig(
-       wavelength=780e-9, #m
-       pixel_pitch=8.0e-6, #m
-       slm_shape=slm_shape,
-       trap_config=trap_config,
-       comment="default slm suite run"
-    )
-
-    pprint(run_config, expand_all=True)
-
-    solver_config = SolverConfig(
-        method="GS", # {GS, WGS}
-        maxiter=200,
-        solver_backend="slm_suite",
-    )
-
-    pprint(solver_config, expand_all=True)
-
+    """
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
@@ -1119,7 +1082,6 @@ if __name__ == "__main__":
         "./results/plots/trap_stack_mean.pdf",
         np.log(stack_mean_similar_traps + 1e-12),
     )
-
     """
     artifacts, residual_int = extract_background_artifacts(
         ff_int, target_intensity, max_artifacts=9
@@ -1145,7 +1107,6 @@ if __name__ == "__main__":
         array_center=run_config.array_center
     )
     """
-
     performance_metrics = compute_performance_metrics(ff_int, target_intensity)
     write_metrics_table("./results/tables/performance_metrics.tex", performance_metrics)
 
@@ -1202,6 +1163,7 @@ if __name__ == "__main__":
         group_name=solver_config.method.lower(),
         dataset_name="inferred_farfield_intensity",
     )
+    """
 
 
 # def main():
