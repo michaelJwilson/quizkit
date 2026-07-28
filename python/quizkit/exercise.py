@@ -403,6 +403,10 @@ if __name__ == "__main__":
     ARRAY_SHAPE = (10, 10)  # 10 x 10 = 100 spots
     ARRAY_PITCH = (20, 20)  # spot separation in far-field grid samples
 
+    # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
+    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423   
+    ARRAY_CENTER = None
+
     METHOD = "GS"  # {GS, WGS}
     MAXITER = 1 # TODO HACK
 
@@ -431,6 +435,7 @@ if __name__ == "__main__":
         array_pitch=ARRAY_PITCH,
         basis="knm",  # pixel coordinates in the far-field image plane
         amp=slm_illumination,  # fixed Gaussian illumination
+        array_center=ARRAY_CENTER,  # shift from zeroth order
         phase=np.random.uniform(-np.pi, np.pi, SLM_SHAPE),  # reproducibility required.
     )
 
