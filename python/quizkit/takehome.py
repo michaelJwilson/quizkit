@@ -8,7 +8,7 @@ from enum import Enum
 from dataclasses import dataclass, asdict, field
 from typing import Tuple, Optional, Any
 
-import uuid # TODO
+import uuid  # TODO
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -32,6 +32,8 @@ random.seed(42)
 np.random.seed(42)
 
 start_time = time.time()
+
+
 class RuntimeFormatter(logging.Formatter):
     def format(self, record):
         runtime_minutes = (time.time() - start_time) / 60.0
@@ -74,19 +76,31 @@ def get_gaussian_slm_illumination(slm_shape):
 
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
+
 def _add_colorbar(ax, im, label=None):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     ax.figure.colorbar(im, cax=cax, label=label)
 
-def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None, 
-                      cbar_label=None, hide_ticks=False, figsize=(5, 3.2),
-                      xlabel=None, ylabel=None, **imshow_kwargs):
+
+def plot_scalar_field(
+    plot_path,
+    field,
+    cmap="inferno",
+    title=None,
+    extent=None,
+    cbar_label=None,
+    hide_ticks=False,
+    figsize=(5, 3.2),
+    xlabel=None,
+    ylabel=None,
+    **imshow_kwargs,
+):
     fig, ax = plt.subplots(figsize=figsize)
-    
+
     im = ax.imshow(field, cmap=cmap, extent=extent, **imshow_kwargs)
     ax.set_aspect("equal")
-    
+
     if title:
         ax.set_title(title, fontsize=14)  # Match your phase retrieval titlesize
     if xlabel:
@@ -96,14 +110,15 @@ def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None,
     if hide_ticks:
         ax.set_xticks([])
         ax.set_yticks([])
-        
+
     _add_colorbar(ax, im, cbar_label)
 
     logger.info(f"Writing {plot_path}.")
-    
+
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
 
 """
 def plot_target_intensity(plot_path, target_intensity, target_extent=None):
@@ -185,6 +200,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     plt.close(fig)
 """
 
+
 def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
 
@@ -207,6 +223,7 @@ def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
         "farfield_extent_rad": float(farfield_extent),
         "farfield_resolution_rad": float(farfield_resolution),
     }
+
 
 """
 def compute_performance_metrics(forward_intensity, target_intensity):
@@ -293,15 +310,16 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
     }
 """
 
+
 def write_performance_metrics_tex(
     filepath: str | Path,
-    metrics_by_run: dict[str, dict], 
-    caption: str = "Computed performance metrics for the optimized SLM phase.", 
-    label: str = "tab:hologram_metrics"
+    metrics_by_run: dict[str, dict],
+    caption: str = "Computed performance metrics for the optimized SLM phase.",
+    label: str = "tab:hologram_metrics",
 ) -> None:
     """
     Generates and writes a LaTeX table comparing performance metrics across solver runs.
-    
+
     Args:
         filepath: The destination path for the .tex file.
         metrics_by_run: Dictionary mapping run names to their metric dictionaries.
@@ -321,7 +339,7 @@ def write_performance_metrics_tex(
         "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
         "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
         "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
-        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity"
+        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity",
     }
 
     run_keys = list(metrics_by_run.keys())
@@ -330,12 +348,15 @@ def write_performance_metrics_tex(
     # 1. Determine Column Headers and Tabular Alignment
     # Always use the provided key(s), capitalized
     headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
-        
+
     c_cols = "c" * n_runs
     tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
 
     # 2. Build Header Row
-    header_row = " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"]) + " \\\\"
+    header_row = (
+        " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
+        + " \\\\"
+    )
 
     # 3. Build Data Rows
     # Grab the metric names from the first run (excluding the raw array)
@@ -348,7 +369,7 @@ def write_performance_metrics_tex(
 
         for key in run_keys:
             val = metrics_by_run[key].get(m_name, np.nan)
-            
+
             if isinstance(val, float) and not np.isnan(val):
                 if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
                     row_parts.append(f"{val:.2e}")
@@ -379,7 +400,7 @@ def write_performance_metrics_tex(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Writing {out_path}.")
-    
+
     with open(out_path, "w") as f:
         f.write(latex)
 
@@ -432,16 +453,14 @@ def reduce_stack_similar_crops(
 ):
     """Crops and optionally reduces a stack of sub-regions. Supports boundary-safe zero-padding."""
     pad_y, pad_x = stack_h // 2, stack_w // 2
-    
+
     # Pad intensity with zeros so boundary crops don't clamp-shift in JAX
     padded_int = jnp.pad(
-        forward_intensity, 
-        ((pad_y, pad_y), (pad_x, pad_x)), 
-        mode='constant'
+        forward_intensity, ((pad_y, pad_y), (pad_x, pad_x)), mode="constant"
     )
 
     def crop_single(coord):
-        # Because we padded by the half-widths, the original center coordinate 
+        # Because we padded by the half-widths, the original center coordinate
         # maps perfectly to the starting index of the slice in the padded array.
         return jax.lax.dynamic_slice(
             padded_int, (coord[0], coord[1]), (stack_h, stack_w)
@@ -468,12 +487,12 @@ def reduce_stack_similar_crops(
 
 
 def extract_background_artifacts(
-    forward_intensity, 
-    trap_labels, 
+    forward_intensity,
+    trap_labels,
     exclusion_mask=None,
-    exclusion_pad=15, 
-    percentile_q=99.9, 
-    max_artifacts=100
+    exclusion_pad=15,
+    percentile_q=99.9,
+    max_artifacts=100,
 ):
     """
     Isolates background speckle/ghost traps using percentile thresholding,
@@ -483,7 +502,7 @@ def extract_background_artifacts(
         struct = np.ones((exclusion_pad * 2 + 1, exclusion_pad * 2 + 1), dtype=bool)
         trap_mask = binary_dilation(trap_labels > 0, structure=struct)
     else:
-        trap_mask = (trap_labels > 0)
+        trap_mask = trap_labels > 0
 
     if exclusion_mask is not None:
         trap_mask = np.logical_or(trap_mask, exclusion_mask)
@@ -494,7 +513,7 @@ def extract_background_artifacts(
     bg_pixels = residual_int[bg_mask]
     if len(bg_pixels) == 0:
         return [], residual_int
-        
+
     artifact_threshold = np.percentile(bg_pixels, percentile_q)
     binary_artifacts = residual_int > artifact_threshold
 
@@ -524,7 +543,7 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
         center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
 
     array_extent = (np.array(array_shape) - 1) * np.array(array_pitch)
-    
+
     x_min = int(np.floor(center_x - array_extent[1] / 2.0 - pad))
     x_max = int(np.ceil(center_x + array_extent[1] / 2.0 + pad))
     y_min = int(np.floor(center_y - array_extent[0] / 2.0 - pad))
@@ -535,10 +554,11 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
     y_min_clamped = max(0, y_min)
     y_max_clamped = min(slm_shape[0], y_max)
 
-    trap_array_mask = np.zeros(slm_shape, dtype=bool)    
+    trap_array_mask = np.zeros(slm_shape, dtype=bool)
     trap_array_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
-    
+
     return trap_array_mask
+
 
 class ConfigMixin:
     def to_dict(self) -> dict:
@@ -551,10 +571,11 @@ class ConfigMixin:
     def to_json(self, indent: int = 4) -> str:
         return json.dumps(self.to_dict(), indent=indent)
 
+
 @dataclass
 class TrapConfig(ConfigMixin):
     trap_id: int
-    trap_type: str 
+    trap_type: str
     array_shape: Tuple[int, int]
     array_pitch: Tuple[int, int]
     array_center: Optional[Tuple[float, float]] = None
@@ -564,7 +585,7 @@ class TrapConfig(ConfigMixin):
 class TrapConfigs(Enum):
     # NB format=(trap_type, array_shape, array_pitch, array_center)
     ON_AXIS = (0, "on_axis", (10, 10), (20, 20), None)
-    OFF_AXIS = (1, "off_axis", (10, 10), (20, 20), (3. * 1920 / 4, 2. * 1200 / 4))
+    OFF_AXIS = (1, "off_axis", (10, 10), (20, 20), (3.0 * 1920 / 4, 2.0 * 1200 / 4))
 
     @property
     def id(self) -> int:
@@ -574,11 +595,12 @@ class TrapConfigs(Enum):
         config_id, trap_type, array_shape, array_pitch, array_center = self.value
         return TrapConfig(
             trap_id=self.id,
-            trap_type=trap_type, 
+            trap_type=trap_type,
             array_shape=array_shape,
             array_pitch=array_pitch,
             array_center=array_center,
         )
+
 
 @dataclass
 class RunConfig(ConfigMixin):
@@ -592,23 +614,26 @@ class RunConfig(ConfigMixin):
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
-    
+
     def __getattr__(self, name):
         try:
             return getattr(self.trap_config, name)
         except AttributeError:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
 
 @dataclass
 class SolverConfig(ConfigMixin):
     method: str  # {"GS", "WGS", "GD"}
     maxiter: int = 200
 
-    solver_backend : str | None = None
+    solver_backend: str | None = None
     solver_runtime: float | None = None
 
     smooth_phase: bool = False
-    smooth_sigma: int = 3 # pixels
+    smooth_sigma: int = 3  # pixels
 
     loss_norm: str = "L2"  # {"L1", "L2"}
     learning_rate: float = 0.1
@@ -624,14 +649,15 @@ class SolverConfig(ConfigMixin):
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
 
+
 class HologramExperiment:
     _is_frozen = False
 
     def __init__(self, run_config: RunConfig):
         self.run_config = run_config
-        self.slm_illumination = get_gaussian_slm_illumination(self.run_config.slm_shape)        
+        self.slm_illumination = get_gaussian_slm_illumination(self.run_config.slm_shape)
         self.slm_illumination.flags.writeable = False
-        
+
         hologram = SpotHologram.make_rectangular_array(
             self.run_config.slm_shape,
             array_shape=self.run_config.array_shape,
@@ -645,38 +671,40 @@ class HologramExperiment:
         self.target = hologram.target.copy()
         self.target.flags.writeable = False
 
-        self.trap_array_mask = get_trap_array_mask(self.run_config.slm_shape, self.run_config.array_shape, self.run_config.array_pitch, self.run_config.array_center, pad=25)
+        self.trap_array_mask = get_trap_array_mask(
+            self.run_config.slm_shape,
+            self.run_config.array_shape,
+            self.run_config.array_pitch,
+            self.run_config.array_center,
+            pad=25,
+        )
         self.trap_array_mask.flags.writeable = False
 
-        (
-            trap_labels_np, 
-            self.num_traps, 
-            coords_np, 
-            self.trap_h, 
-            self.trap_w
-        ) = encode_target_traps(self.target, threshold_frac=0.0)
-        
+        trap_labels_np, self.num_traps, coords_np, self.trap_h, self.trap_w = (
+            encode_target_traps(self.target, threshold_frac=0.0)
+        )
+
         self.trap_labels = jnp.array(trap_labels_np)
         self.trap_coords = jnp.array(coords_np)
 
         # TODO DEPRECATE
         self.crop_coords = self.trap_coords
-        
+
         self._is_frozen = True
 
     @classmethod
     def from_run_h5(cls, run_dir: str | Path):
         run_dir = Path(run_dir)
-        
+
         with open(run_dir / "run_config.json", "r") as f:
             data = json.load(f)
             trap_data = data.pop("trap_config")
             data["trap_config"] = TrapConfig(**trap_data)
             run_config = RunConfig(**data)
-            
+
         obj = cls.__new__(cls)
         obj.run_config = run_config
-        
+
         h5_path = run_dir / "experiment.h5"
 
         with h5py.File(h5_path, "r") as f:
@@ -687,19 +715,15 @@ class HologramExperiment:
         obj.slm_illumination.flags.writeable = False
         obj.target.flags.writeable = False
 
-        (
-            trap_labels_np, 
-            obj.num_traps, 
-            coords_np, 
-            obj.trap_h, 
-            obj.trap_w
-        ) = encode_target_traps(obj.target, threshold_frac=0.0)
-        
+        trap_labels_np, obj.num_traps, coords_np, obj.trap_h, obj.trap_w = (
+            encode_target_traps(obj.target, threshold_frac=0.0)
+        )
+
         obj.trap_labels = jnp.array(trap_labels_np)
         obj.trap_coords = jnp.array(coords_np)
         obj.trap_array_mask = jnp.array(obj.trap_array_mask)
         obj.crop_coords = obj.trap_coords
-        
+
         obj._is_frozen = True
 
         logger.info(f"Loaded HologramExperiment from {run_dir}.")
@@ -735,7 +759,7 @@ class HologramExperiment:
 
         max_steering_angle = wave / pitch
         farfield_extent = max_steering_angle / 2.0
-        
+
         farfield_res_y = farfield_extent / h
         farfield_res_x = farfield_extent / w
 
@@ -754,11 +778,11 @@ class HologramExperiment:
         run_dir = self._get_run_dir(base_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "plots").mkdir(parents=True, exist_ok=True)
-        
+
         plot_scalar_field(
             run_dir / "plots" / "gaussian_slm_illumination.pdf",
             np.log(self.slm_illumination + 1e-12),
-            cbar_label="ln. slm illumination"
+            cbar_label="ln. slm illumination",
         )
 
         x_min, x_max, y_min, y_max = self.target_extent
@@ -766,7 +790,7 @@ class HologramExperiment:
             run_dir / "plots" / "target_intensity.pdf",
             np.log(self.target_intensity[y_min:y_max, x_min:x_max] + 1e-12),
             extent=self.target_extent,
-            cbar_label="ln. target intensity"
+            cbar_label="ln. target intensity",
         )
 
     def write_h5(self, base_dir: str = "./results"):
@@ -777,7 +801,7 @@ class HologramExperiment:
 
         with open(run_dir / "run_config.json", "w") as f:
             f.write(self.run_config.to_json())
-            
+
         hdf5_path = run_dir / "experiment.h5"
 
         logger.info(f"Writing hologram experiment to {hdf5_path}.")
@@ -786,22 +810,24 @@ class HologramExperiment:
             filepath=hdf5_path,
             data=self.slm_illumination,
             group_name="slm",
-            dataset_name="slm_illumination"
+            dataset_name="slm_illumination",
         )
-    
+
         write_hdf5(
             filepath=hdf5_path,
             data=self.target,
             group_name="target",
-            dataset_name="target"
+            dataset_name="target",
         )
 
         write_hdf5(
             filepath=hdf5_path,
             data=self.trap_array_mask,
             group_name="trap_array_mask",
-            dataset_name="trap_array_mask"
+            dataset_name="trap_array_mask",
         )
+
+
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     efficiency: float
@@ -868,7 +894,8 @@ class PerformanceMetrics(ConfigMixin):
             trap_mean=trap_mean,
             trap_min=trap_min,
             trap_max=trap_max,
-            trap_uniformity_minmax=1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+            trap_uniformity_minmax=1.0
+            - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
             ghost_to_mean_ratio=max_bg / (trap_mean + 1e-12),
             ghost_to_dimmest_ratio=max_bg / (trap_min + 1e-12),
             signal_to_background_floor=trap_mean / (mean_bg + 1e-12),
@@ -883,6 +910,7 @@ class PerformanceMetrics(ConfigMixin):
             trap_labels=solver.exp.trap_labels,
             num_traps=solver.exp.num_traps,
         )
+
 
 class HologramExperimentSolver:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):
@@ -909,7 +937,9 @@ class HologramExperimentSolver:
         assert np.allclose(self.exp.target, self.__hologram.target)
 
     def optimize(self):
-        logger.info(f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations.")
+        logger.info(
+            f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations."
+        )
 
         start_time = time.time()
 
@@ -922,11 +952,10 @@ class HologramExperimentSolver:
 
         self.config["solver_runtime"] = time.time() - start_time
 
-
     @property
     def target_intensity(self):
         return self.exp.target_intensity
-    
+
     @property
     def target_extent(self):
         return self.exp.target_extent
@@ -955,13 +984,17 @@ class HologramExperimentSolver:
             cbar_label="phase [rad]",
             xlabel=r"$x [\Delta]$",
             ylabel=r"$y [\Delta]$",
-            interpolation="nearest"
+            interpolation="nearest",
         )
 
         stack_mean_similar_traps = reduce_stack_similar_crops(
-            self.forward_intensity, self.exp.trap_coords, self.stack_h, self.stack_w, reducer=jnp.mean,
+            self.forward_intensity,
+            self.exp.trap_coords,
+            self.stack_h,
+            self.stack_w,
+            reducer=jnp.mean,
         )
-        
+
         plot_scalar_field(
             plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
             field=np.log(stack_mean_similar_traps + 1e-12),
@@ -973,18 +1006,19 @@ class HologramExperimentSolver:
         )
 
         x_min, x_max, y_min, y_max = self.target_extent
-        ff_int = self.forward_intensity 
+        ff_int = self.forward_intensity
 
         plot_scalar_field(
             plot_path=plot_dir / "farfield_intensity.pdf",
-            field=ff_int[y_min:y_max, x_min:x_max] / ff_int[y_min:y_max, x_min:x_max].max(),
+            field=ff_int[y_min:y_max, x_min:x_max]
+            / ff_int[y_min:y_max, x_min:x_max].max(),
             cmap="inferno",
             title="far field",
             extent=self.target_extent,
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
-            origin="lower"
+            origin="lower",
         )
 
     def extract_off_target_intensity(self):
@@ -993,40 +1027,44 @@ class HologramExperimentSolver:
         exclusion_mask = None
 
         artifacts, _ = extract_background_artifacts(
-            self.forward_intensity, 
-            self.exp.trap_labels, 
-            exclusion_pad=15, 
+            self.forward_intensity,
+            self.exp.trap_labels,
+            exclusion_pad=15,
             exclusion_mask=exclusion_mask,
-            percentile_q=99.9
+            percentile_q=99.9,
         )
 
         artifact_coords = jnp.array([[art["cy"], art["cx"]] for art in artifacts])
         artifact_stacks = reduce_stack_similar_crops(
-            self.forward_intensity, 
-            artifact_coords, 
-            stack_h=self.stack_h, 
-            stack_w=self.stack_w, 
-            reducer=None # Skips reduction, returns (N, H, W)
+            self.forward_intensity,
+            artifact_coords,
+            stack_h=self.stack_h,
+            stack_w=self.stack_w,
+            reducer=None,  # Skips reduction, returns (N, H, W)
         )
 
         return artifact_stacks
 
     def write_h5(self, base_dir: str = "./results"):
-        out_dir =self.__get_run_dir(base_dir)
+        out_dir = self.__get_run_dir(base_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Writing solver configuration to {out_dir / 'solver_config.json'}.")
+        logger.info(
+            f"Writing solver configuration to {out_dir / 'solver_config.json'}."
+        )
 
         with open(out_dir / "solver_config.json", "w") as f:
             f.write(self.config.to_json())
 
-        logger.info(f"Writing performance metrics to {out_dir / 'performance_metrics.json'}.")
-            
+        logger.info(
+            f"Writing performance metrics to {out_dir / 'performance_metrics.json'}."
+        )
+
         metrics = PerformanceMetrics.from_solver(self)
 
         with open(out_dir / "performance_metrics.json", "w") as f:
             f.write(metrics.to_json())
-            
+
         hdf5_path = out_dir / f"phase_solution_{self.config.hash}.h5"
         logger.info(f"Writing HologramExperimentSovler results to {hdf5_path}.")
 
@@ -1055,7 +1093,7 @@ class HologramExperimentSolver:
 
 
 def run_slmsuit_phase_retrieval():
-    slm_shape=(1200, 1920) # (height, width) in pixels,
+    slm_shape = (1200, 1920)  # (height, width) in pixels,
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
@@ -1077,7 +1115,7 @@ def run_slmsuit_phase_retrieval():
     #     trap_type="off_axis",
     #     array_shape=(10, 10),
     #     array_pitch=(20, 20), # spot separation in far-field grid samples
-    #     array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4), 
+    #     array_center=(3. * slm_shape[1] / 4, 2. * slm_shape[0] / 4),
     # )
 
     # pprint(trap_config, expand_all=True)
@@ -1088,11 +1126,11 @@ def run_slmsuit_phase_retrieval():
         pixel_pitch=8.0e-6,
         slm_shape=slm_shape,
         trap_config=trap_config,
-        comment="default slm suite run"
+        comment="default slm suite run",
     )
 
     solver_config = SolverConfig(
-        method="GS", 
+        method="GS",
         maxiter=200,
         solver_backend="slm_suite",
     )
@@ -1112,13 +1150,15 @@ def run_slmsuit_phase_retrieval():
     metrics = PerformanceMetrics.from_solver(solver)
 
     pprint(metrics, expand_all=True)
-    
+
     write_performance_metrics_tex(
-        filepath=exp._get_run_dir("./results") / f"phase_retrieval/{solver.config.timestamp}" / "performance_metrics.tex",
+        filepath=exp._get_run_dir("./results")
+        / f"phase_retrieval/{solver.config.timestamp}"
+        / "performance_metrics.tex",
         metrics_by_run={solver.config.method: metrics.to_dict()},
-        caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase."
+        caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
     )
-    
+
     logger.info(f"Done.")
 
     """
@@ -1283,4 +1323,4 @@ def main():
 
 
 if __name__ == "__main__":
-     main()
+    main()

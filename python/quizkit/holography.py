@@ -27,6 +27,7 @@ atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 logger = logging.getLogger(__name__)
 
+
 def get_gaussian_blur_otf(shape, sigma):
     H, W = shape
     x = jnp.arange(-W // 2, W - W // 2)
