@@ -954,7 +954,7 @@ class HologramExperimentSolver:
             plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
             field=np.log(stack_mean_similar_traps + 1e-12),
             cmap="inferno",
-            title="mean trap stack",
+            title="trap stack: mean",
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
