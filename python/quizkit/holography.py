@@ -186,7 +186,6 @@ def run_gd(source_amp, target_amp, initial_phase, config: SolverConfig, smooth_l
 
         return loss_val, inferred_intensity
 
-    # has_aux=True tells JAX the second return value is auxiliary, not differentiated
     loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
 
     @jax.jit
@@ -284,7 +283,6 @@ if __name__ == "__main__":
     config = SolverConfig(method="GD", maxiter=200, smooth_phase=False, smooth_sigma=5)
     logger.info(f"Starting {config.method} optimization over {config.maxiter} iterations...")
 
-    # Now returning history dictionary accumulated via lax.scan
     final_phase, inferred_intensity, history = solve_hologram(
         slm_illumination, target_amp, initial_phase, config
     )
