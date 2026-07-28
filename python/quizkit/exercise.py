@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
-from scipy.ndimage import find_objects, label
+from scipy.ndimage import find_objects, label, binary_dilation
 from slmsuite.holography.algorithms import SpotHologram
 import matplotlib.gridspec as gridspec
 from pathlib import Path
@@ -108,7 +108,7 @@ def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig.savefig(plot_path, dpi=300)
     plt.close(fig)
 """
-
+"""
 def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=None):
     plt.rcParams.update(
         {
@@ -152,7 +152,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     fig.tight_layout(pad=2.0)
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-
+"""
 
 def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
@@ -177,7 +177,7 @@ def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
         "farfield_resolution_rad": float(farfield_resolution),
     }
 
-
+"""
 def compute_performance_metrics(forward_intensity, target_intensity):
     # NB given far-field intensity and target intensity ...
     ff_int = np.asarray(forward_intensity, dtype=np.float32)
@@ -241,15 +241,9 @@ def compute_performance_metrics(forward_intensity, target_intensity):
         "ghost_trap_ratio": float(ghost_trap_ratio),
         "pearson": float(pearson),
     }
-
+"""
+"""
 def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
-    """
-    Computes inter/intra contrast metrics using a single 2D integer mask.
-    Args:
-        inferred_intensity: (H, W) array of forward intensity.
-        trap_mask: (H, W) static integer array.
-        num_traps: Static integer.
-    """
     flat_intensity = inferred_intensity.ravel()
     flat_labels = trap_mask.ravel()
 
@@ -266,7 +260,7 @@ def compute_trap_metrics(inferred_intensity, trap_mask, num_traps):
         "inter_uniformity": inter_uniformity,
         "trap_powers": trap_powers,
     }
-
+"""
 
 def write_performance_metrics_tex(
     filepath: str | Path,
@@ -395,49 +389,81 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
 
 
-def reduce_stack_similar_traps(
+def reduce_stack_similar_crops(
     forward_intensity,
     center_coords,
     stack_h,
     stack_w,
     weights=None,
-    reducer=jnp.mean,
+    reducer=None,
 ):
-    def crop_single(coord):
-        start_y = coord[0] - (stack_h // 2)
-        start_x = coord[1] - (stack_w // 2)
+    """Crops and optionally reduces a stack of sub-regions. Supports boundary-safe zero-padding."""
+    pad_y, pad_x = stack_h // 2, stack_w // 2
+    
+    # Pad intensity with zeros so boundary crops don't clamp-shift in JAX
+    padded_int = jnp.pad(
+        forward_intensity, 
+        ((pad_y, pad_y), (pad_x, pad_x)), 
+        mode='constant'
+    )
 
+    def crop_single(coord):
+        # Because we padded by the half-widths, the original center coordinate 
+        # maps perfectly to the starting index of the slice in the padded array.
         return jax.lax.dynamic_slice(
-            forward_intensity, (start_y, start_x), (stack_h, stack_w)
+            padded_int, (coord[0], coord[1]), (stack_h, stack_w)
         )
 
     # Shape: (N, stack_h, stack_w)
-    trap_stack = jax.vmap(crop_single)(center_coords)
+    crop_stack = jax.vmap(crop_single)(center_coords)
+
+    if reducer is None:
+        return crop_stack
 
     if weights is not None:
         w = weights[:, None, None]
-
         if reducer in (jnp.mean, jnp.average):
-            reduced_profile = jnp.sum(trap_stack * w, axis=0) / (jnp.sum(w) + 1e-12)
+            reduced_profile = jnp.sum(crop_stack * w, axis=0) / (jnp.sum(w) + 1e-12)
         else:
             raise NotImplementedError(
                 "Weighted reduction is only implemented for mean/average."
             )
     else:
-        reduced_profile = reducer(trap_stack, axis=0)
+        reduced_profile = reducer(crop_stack, axis=0)
 
     return reduced_profile
 
 
 def extract_background_artifacts(
-    forward_intensity, target_intensity, threshold_frac=0.25, max_artifacts=9
+    forward_intensity, 
+    trap_labels, 
+    exclusion_pad=15, 
+    percentile_q=99.9, 
+    max_artifacts=100
 ):
-    bg_mask = target_intensity == 0.0
+    """
+    Isolates background speckle/ghost traps using percentile thresholding,
+    excluding regions around intended traps.
+    """
+    # 1. Background Masking with Exclusion Zones
+    if exclusion_pad > 0:
+        struct = np.ones((exclusion_pad * 2 + 1, exclusion_pad * 2 + 1), dtype=bool)
+        trap_mask = binary_dilation(trap_labels > 0, structure=struct)
+    else:
+        trap_mask = (trap_labels > 0)
+        
+    bg_mask = ~trap_mask
     residual_int = forward_intensity * bg_mask
 
-    artifact_threshold = residual_int.max() * threshold_frac
+    # 2. Percentile-based Filtering
+    bg_pixels = residual_int[bg_mask]
+    if len(bg_pixels) == 0:
+        return [], residual_int
+        
+    artifact_threshold = np.percentile(bg_pixels, percentile_q)
     binary_artifacts = residual_int > artifact_threshold
 
+    # 3. Labeling and Component Extraction
     labeled_artifacts, _ = label(binary_artifacts)
     slices = find_objects(labeled_artifacts)
 
@@ -446,8 +472,8 @@ def extract_background_artifacts(
         cy = (s[0].start + s[0].stop) // 2
         cx = (s[1].start + s[1].stop) // 2
 
-        comp_mask = labeled_artifacts == (i + 1)
-        comp_power = np.sum(residual_int[comp_mask])
+        comp_mask = labeled_artifacts[s] == (i + 1)
+        comp_power = np.sum(residual_int[s][comp_mask])
 
         artifacts.append({"id": i, "cy": cy, "cx": cx, "power": comp_power})
 
@@ -457,64 +483,29 @@ def extract_background_artifacts(
     return artifacts, residual_int
 
 
-def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
-    stacks = []
-    H, W = ff_int.shape
-    for art in artifacts:
-        cy, cx = art["cy"], art["cx"]
-
-        y0 = cy - stack_h // 2
-        y1 = y0 + stack_h
-        x0 = cx - stack_w // 2
-        x1 = x0 + stack_w
-
-        crop = np.zeros((stack_h, stack_w), dtype=ff_int.dtype)
-
-        valid_y0, valid_y1 = max(0, y0), min(H, y1)
-        valid_x0, valid_x1 = max(0, x0), min(W, x1)
-
-        dest_y0 = valid_y0 - y0
-        dest_y1 = dest_y0 + (valid_y1 - valid_y0)
-        dest_x0 = valid_x0 - x0
-        dest_x1 = dest_x0 + (valid_x1 - valid_x0)
-
-        if valid_y1 > valid_y0 and valid_x1 > valid_x0:
-            crop[dest_y0:dest_y1, dest_x0:dest_x1] = ff_int[
-                valid_y0:valid_y1, valid_x0:valid_x1
-            ]
-
-        stacks.append(crop)
-
-    return np.array(stacks)
-
-"""
-def label_slm_fuzz(artifacts, array_shape, array_pitch, array_center, slm_shape, pad=25):
-    center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
-
+def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
     if array_center is not None:
-        center_x += array_center[0]
-        center_y += array_center[1]
+        center_x, center_y = array_center[0], array_center[1]
+    else:
+        center_y, center_x = slm_shape[0] / 2.0, slm_shape[1] / 2.0
 
-    Ny, Nx = array_shape
-    dy, dx = array_pitch
+    array_extent = (np.array(array_shape) - 1) * np.array(array_pitch)
+    
+    x_min = int(np.floor(center_x - array_extent[1] / 2.0 - pad))
+    x_max = int(np.ceil(center_x + array_extent[1] / 2.0 + pad))
+    y_min = int(np.floor(center_y - array_extent[0] / 2.0 - pad))
+    y_max = int(np.ceil(center_y + array_extent[0] / 2.0 + pad))
 
-    x_half_width = (Nx - 1) / 2.0 * dx
-    y_half_height = (Ny - 1) / 2.0 * dy
+    x_min_clamped = max(0, x_min)
+    x_max_clamped = min(slm_shape[1], x_max)
+    y_min_clamped = max(0, y_min)
+    y_max_clamped = min(slm_shape[0], y_max)
 
-    x_min = center_x - x_half_width - pad
-    x_max = center_x + x_half_width + pad
-    y_min = center_y - y_half_height - pad
-    y_max = center_y + y_half_height + pad
+    trap_array_mask = np.zeros(slm_shape, dtype=bool)    
+    trap_array_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
+    
+    return trap_array_mask
 
-    for art in artifacts:
-        cx, cy = art["cx"], art["cy"]
-
-        if (x_min <= cx <= x_max) and (y_min <= cy <= y_max):
-            art["is_fuzz"] = True
-        else:
-            art["is_fuzz"] = False
-            
-    return artifacts
 
 
 def export_artifact_data_for_streamlit(
@@ -838,6 +829,10 @@ class HologramExperimentSolver:
         self.exp = experiment
         self.config = config
 
+        # TODO
+        self.stack_h = 50
+        self.stack_w = 50
+
         self.__hologram = SpotHologram.make_rectangular_array(
             self.exp.run_config.slm_shape,
             array_shape=self.exp.run_config.array_shape,
@@ -890,9 +885,8 @@ class HologramExperimentSolver:
             interpolation="nearest"
         )
 
-        stack_h, stack_w = 50, 50
-        stack_mean_similar_traps = reduce_stack_similar_traps(
-            self.forward_intensity, self.exp.trap_coords, stack_h, stack_w
+        stack_mean_similar_traps = reduce_stack_similar_crops(
+            self.forward_intensity, self.exp.trap_coords, self.stack_h, self.stack_w
         )
         
         plot_scalar_field(
@@ -918,6 +912,23 @@ class HologramExperimentSolver:
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
             origin="lower"
+        )
+
+    def extract_off_target_intensity(self):
+        artifacts, _ = extract_background_artifacts(
+            self.forward_intensity, 
+            self.exp.trap_labels, 
+            exclusion_pad=15, 
+            percentile_q=99.9
+        )
+
+        artifact_coords = jnp.array([[art["cy"], art["cx"]] for art in artifacts])
+        artifact_stacks = reduce_stack_similar_crops(
+            self.forward_intensity, 
+            artifact_coords, 
+            stack_h=self.stack_h, 
+            stack_w=self.stack_w, 
+            reducer=None # Skips reduction, returns (N, H, W)
         )
 
     def write_h5(self, base_dir: str = "./results"):
