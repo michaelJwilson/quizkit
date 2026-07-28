@@ -41,13 +41,35 @@ def get_gaussian_slm_illumination(slm_shape):
 
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
+def _add_colorbar(ax, im, label=None):
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    ax.figure.colorbar(im, cax=cax, label=label)
+
+def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None, 
+                      cbar_label=None, hide_ticks=False, figsize=(5, 3.2)):
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    im = ax.imshow(field, cmap=cmap, extent=extent)
+    ax.set_aspect("equal")
+    
+    if title:
+        ax.set_title(title, fontsize=10)
+    if hide_ticks:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        
+    _add_colorbar(ax, im, cbar_label)
+    
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)  # Crucial for preventing memory leaks
+
 
 def plot_slm_illumination(plot_path, slm_illumination):
     fig, ax = plt.subplots(figsize=(5, 3.2))
     im = ax.imshow(slm_illumination, cmap="inferno")
     ax.set_aspect("equal")  # show that the beam is symmetric
-
-    # fig.colorbar(im, ax=ax, label="slm illumination")
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -448,7 +470,7 @@ def export_artifact_data_for_streamlit(
         'residual_int': residual_int,
         'artifacts': artifacts,
         'artifact_stacks': artifact_stacks,
-        'slm_shape': SLM_SHAPE,
+        'slm_shape': slm_shape,
         'array_shape': array_shape,
         'array_pitch': array_pitch,
         'array_center': array_center,
@@ -457,23 +479,37 @@ def export_artifact_data_for_streamlit(
         pickle.dump(data_bundle, f)
     print(f"Artifact data exported to {filepath}")
 
-@dataclass
-class RunConfig:
-    wavelength: float
-    pixel_pitch: float
-    slm_shape: Tuple[int, int] = (1200, 1920)
-    array_shape: Tuple[int, int] = (10, 10)
-    array_pitch: Tuple[int, int] = (20, 20)
-    array_center: Optional[Tuple[float, float]] = None
-
+class ConfigMixin:
     def to_dict(self) -> dict:
         return asdict(self)
 
     def to_json(self, indent: int = 4) -> str:
         return json.dumps(self.to_dict(), indent=indent)
 
+
 @dataclass
-class SolverConfig:
+class TrapConfig(ConfigMixin):
+    trap_config_id: int 
+    array_shape: Tuple[int, int]
+    array_pitch: Tuple[int, int]
+    array_center: Optional[Tuple[float, float]] = None
+
+
+@dataclass
+class RunConfig(ConfigMixin):
+    wavelength: float
+    pixel_pitch: float
+    slm_shape: Tuple[int, int]
+    trap_config: TrapConfig
+    
+    def __getattr__(self, name):
+        try:
+            return getattr(self.trap_config, name)
+        except AttributeError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+@dataclass
+class SolverConfig(ConfigMixin):
     method: str  # {"GS", "GS", "GD"}
     maxiter: int = 200
 
@@ -497,16 +533,24 @@ if __name__ == "__main__":
     # `"knm"``, this is ``(shape[1], shape[0])/2``.
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    
+    trap_config = TrapConfig(
+       trap_config_id=0,
+       array_shape=(10, 10),
+       array_pitch=(20, 20), # spot separation in far-field grid samples
+       array_center=None
+    )
+
+    pprint(trap_config, expand_all=True)
+
     # NB 10x10 optical tweezer array sampling a 200x200 image.
     run_config = RunConfig(
        wavelength=780e-9, #m
        pixel_pitch=8.0e-6, #m
        slm_shape=(1200, 1920),  # (height, width) in pixels,
-       array_shape=(10, 10),
-       array_pitch=(20, 20), # spot separation in far-field grid samples
-       array_center=None
+       trap_config=trap_config,
     )
+
+    pprint(run_config, expand_all=True)
 
     solver_config = SolverConfig(
         method="GS", # {GS, WGS}
@@ -514,17 +558,22 @@ if __name__ == "__main__":
         solver_backend="slm_suite",
     )
 
-    pprint(run_config, expand_all=True)
     pprint(solver_config, expand_all=True)
-
-    exit(0)
 
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
     # NB plot Gaussian slm amplitude profile
-    plot_slm_illumination(
-        "./results/plots/gaussian_slm_illumination.pdf", slm_illumination
+    # plot_slm_illumination(
+    #     "./results/plots/gaussian_slm_illumination.pdf", slm_illumination
+    # )
+
+    plot_scalar_field(
+       "./results/plots/gaussian_slm_illumination.pdf", 
+        slm_illumination, 
+        cbar_label="slm illumination"
     )
+
+    exit(0)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
