@@ -63,21 +63,7 @@ def plot_scalar_field(plot_path, field, cmap="inferno", title=None, extent=None,
     
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)  # Crucial for preventing memory leaks
-
-
-def plot_slm_illumination(plot_path, slm_illumination):
-    fig, ax = plt.subplots(figsize=(5, 3.2))
-    im = ax.imshow(slm_illumination, cmap="inferno")
-    ax.set_aspect("equal")  # show that the beam is symmetric
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-
-    fig.colorbar(im, cax=cax, label="slm illumination")
-
-    fig.tight_layout()
-    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
 
 
 def plot_target_intensity(plot_path, target_intensity, target_extent=None):
@@ -562,18 +548,11 @@ if __name__ == "__main__":
 
     slm_illumination = get_gaussian_slm_illumination(run_config.slm_shape)
 
-    # NB plot Gaussian slm amplitude profile
-    # plot_slm_illumination(
-    #     "./results/plots/gaussian_slm_illumination.pdf", slm_illumination
-    # )
-
     plot_scalar_field(
        "./results/plots/gaussian_slm_illumination.pdf", 
         slm_illumination, 
         cbar_label="slm illumination"
     )
-
-    exit(0)
 
     # NB construct tweezer array hologram and optimize it with GS algorithm
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_hologram.py#L26
@@ -587,14 +566,17 @@ if __name__ == "__main__":
         phase=np.random.uniform(-np.pi, np.pi, run_config.slm_shape),  # reproducibility required.
     )
 
+    # NB desired farfield amplitude in the "knm" basis
+    target_intensity = np.abs(hologram.target) ** 2
+
     # TODO
     target_extent = get_trap_zoom(hologram.target)
     x_min, x_max, y_min, y_max = target_extent
 
-    plot_target_intensity(
+    plot_scalar_field(
         "./results/plots/target_intensity.pdf",
-        hologram.target[y_min:y_max, x_min:x_max],
-        target_extent,
+        target_intensity[y_min:y_max, x_min:x_max],
+        extent=target_extent,
     )
 
     trap_labels_np, num_traps, coords_np, trap_h, trap_w = encode_target_traps(
@@ -636,9 +618,6 @@ if __name__ == "__main__":
 
     ff_int = np.abs(hologram.get_farfield()) ** 2
 
-    # NB desired farfield amplitude in the "knm" basis
-    target_intensity = np.abs(hologram.target) ** 2
-
     stack_h, stack_w = 50, 50
     stack_mean_similar_traps = reduce_stack_similar_traps(
         ff_int, crop_coords_jax, stack_h, stack_w
@@ -646,10 +625,17 @@ if __name__ == "__main__":
     # NB inter_uniformity=0.84553164
     trap_metrics = compute_trap_metrics(ff_int, trap_labels_jax, num_traps)
 
-    plot_trap_stack_mean(
+    # plot_trap_stack_mean(
+    #     "./results/plots/trap_stack_mean.pdf",
+    #     np.log(stack_mean_similar_traps + 1e-12),
+    # )
+
+    plot_scalar_field(
         "./results/plots/trap_stack_mean.pdf",
         np.log(stack_mean_similar_traps + 1e-12),
     )
+
+    exit(0)
 
     artifacts, residual_int = extract_background_artifacts(
         ff_int, target_intensity, max_artifacts=9
