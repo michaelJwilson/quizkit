@@ -365,48 +365,37 @@ def plot_trap_stack_mean(plot_path, trap_stack_mean):
     fig.savefig(plot_path, dpi=300)
     plt.close(fig)
 
-def extract_background_artifacts(ff_int, target_intensity, threshold_frac=0.05, max_artifacts=9):
-    """
-    Identifies contiguous blobs of residual light in the background.
-    """
-    # 1. Mask out the actual target traps (everything > 0 in target is a trap)
+def extract_background_artifacts(ff_int, target_intensity, threshold_frac=0.25, max_artifacts=9):
     bg_mask = target_intensity == 0.0
     residual_int = ff_int * bg_mask
 
-    # 2. Threshold the residual light to find distinct artifacts (e.g., 0th order)
     artifact_threshold = residual_int.max() * threshold_frac
     binary_artifacts = residual_int > artifact_threshold
 
-    labeled_artifacts, num_artifacts = label(binary_artifacts)
+    labeled_artifacts, _ = label(binary_artifacts)
     slices = find_objects(labeled_artifacts)
 
     artifacts = []
     for i, s in enumerate(slices):
-        # Center coordinate (y, x)
         cy = (s[0].start + s[0].stop) // 2
         cx = (s[1].start + s[1].stop) // 2
         
-        # Summed intensity for this component
         comp_mask = labeled_artifacts == (i + 1)
         comp_power = np.sum(residual_int[comp_mask])
         
         artifacts.append({
-            'id': i + 1,
+            'id': i,
             'cy': cy,
             'cx': cx,
             'power': comp_power
         })
 
-    # Sort artifacts by total power (descending) and keep the top N
     artifacts.sort(key=lambda x: x['power'], reverse=True)
     artifacts = artifacts[:max_artifacts]
     
     return artifacts, residual_int
 
 def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
-    """
-    Extracts centered crops for each artifact.
-    """
     stacks = []
     H, W = ff_int.shape
     for art in artifacts:
@@ -417,14 +406,11 @@ def crop_artifact_stacks(ff_int, artifacts, stack_h, stack_w):
         x0 = cx - stack_w // 2
         x1 = x0 + stack_w
         
-        # Safe cropping with padding if an artifact is near the edge
         crop = np.zeros((stack_h, stack_w), dtype=ff_int.dtype)
         
-        # Calculate valid ranges
         valid_y0, valid_y1 = max(0, y0), min(H, y1)
         valid_x0, valid_x1 = max(0, x0), min(W, x1)
         
-        # Calculate destination ranges in the crop array
         dest_y0 = valid_y0 - y0
         dest_y1 = dest_y0 + (valid_y1 - valid_y0)
         dest_x0 = valid_x0 - x0
@@ -495,7 +481,7 @@ def plot_artifact_analysis(plot_path, residual_int, artifacts, artifact_stacks):
         
         # Draw a subtle crosshair at the center of the crop
         ch, cw = stack.shape[0] // 2, stack.shape[1] // 2
-        ax_stack.plot(cw, ch, 'r+', markersize=5, alpha=0.5)
+        # ax_stack.plot(cw, ch, 'r+', markersize=5, alpha=0.5)
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300)
@@ -617,7 +603,6 @@ if __name__ == "__main__":
     artifacts, residual_int = extract_background_artifacts(
         ff_int, 
         target_intensity, 
-        threshold_frac=0.0,  
         max_artifacts=9
     )
 
