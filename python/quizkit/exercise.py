@@ -6,7 +6,7 @@ import pickle
 
 import json
 from dataclasses import dataclass, asdict, field
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import jax
 import jax.numpy as jnp
@@ -149,7 +149,7 @@ def plot_phase_retrieval_results(plot_path, phase, intensity, intensity_extent=N
     plt.close(fig)
 
 
-def compute_metrics(wavelength, pixel_pitch, slm_shape):
+def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
 
     # NB maximum direction we can redirect the input beam,
@@ -165,11 +165,18 @@ def compute_metrics(wavelength, pixel_pitch, slm_shape):
         farfield_extent / slm_shape
     )  # radians, assumes square slm pixels.
 
+    return {
+        "max_steering_angle_rad": float(max_steering_angle),
+        "max_steering_angle_deg": float(max_steering_angle_deg),
+        "farfield_extent_rad": float(farfield_extent),
+        "farfield_resolution_rad": float(farfield_resolution),
+    }
 
-def compute_performance_metrics(ff_int, target_int):
+
+def compute_performance_metrics(forward_intensity, target_intensity):
     # NB given far-field intensity and target intensity ...
-    ff_int = np.asarray(ff_int, dtype=np.float32)
-    target_int = np.asarray(target_int, dtype=np.float32)
+    ff_int = np.asarray(forward_intensity, dtype=np.float32)
+    target_int = np.asarray(target_intensity, dtype=np.float32)
 
     # NB max target intensity;
     # target_max = np.max(target_int)
@@ -179,10 +186,10 @@ def compute_performance_metrics(ff_int, target_int):
     signal_mask = target_int > 0.0
     bg_mask = ~signal_mask
 
-    signal_intensities = ff_int[signal_mask]
-    bg_intensities = ff_int[bg_mask]
+    signal_intensities = forward_intensity[signal_mask]
+    bg_intensities = forward_intensity[bg_mask]
 
-    total_power = np.sum(ff_int)
+    total_power = np.sum(forward_intensity)
 
     signal_power = np.sum(signal_intensities)
     bg_power = np.sum(bg_intensities)
@@ -615,6 +622,26 @@ class HologramExperiment:
     def target_extent(self):
         return get_trap_zoom(self.target)
 
+    @cached_property
+    def geometric_metrics(self):
+        wave = self.run_config.wavelength
+        pitch = self.run_config.pixel_pitch
+        h, w = self.run_config.slm_shape
+
+        max_steering_angle = wave / pitch
+        farfield_extent = max_steering_angle / 2.0
+        
+        farfield_res_y = farfield_extent / h
+        farfield_res_x = farfield_extent / w
+
+        return {
+            "max_steering_angle_rad": float(max_steering_angle),
+            "max_steering_angle_deg": float(np.degrees(max_steering_angle)),
+            "farfield_extent_rad": float(farfield_extent),
+            "farfield_res_y_rad": float(farfield_res_y),
+            "farfield_res_x_rad": float(farfield_res_x),
+        }
+
     def _get_run_dir(self, base_dir: str) -> pathlib.Path:
         return pathlib.Path(base_dir) / f"run_{self.run_config.timestamp}"
 
@@ -659,6 +686,93 @@ class HologramExperiment:
             dataset_name="target"
         )
 
+@dataclass
+class PerformanceMetrics(ConfigMixin):
+    efficiency: float
+    stray_light_fraction: float
+    pearson: float
+    trap_cv: float
+    trap_mean: float
+    trap_min: float
+    trap_max: float
+    trap_uniformity_minmax: float
+    ghost_to_mean_ratio: float
+    ghost_to_dimmest_ratio: float
+    signal_to_background_floor: float
+    trap_powers: np.ndarray
+
+    @classmethod
+    def compute(
+        cls,
+        forward_intensity: np.ndarray,
+        target_intensity: np.ndarray,
+        trap_labels: jnp.ndarray | np.ndarray,
+        num_traps: int,
+    ) -> "PerformanceMetrics":
+        ff_int = np.asarray(forward_intensity, dtype=np.float64)
+        target_int = np.asarray(target_intensity, dtype=np.float64)
+
+        flat_forward_intensity = ff_int.ravel()
+        flat_trap_labels = np.asarray(trap_labels).ravel()
+
+        # Integrated trap power reduction via JAX bincount
+        trap_powers_jax = jnp.bincount(
+            flat_trap_labels,
+            weights=flat_forward_intensity,
+            length=num_traps + 1,
+        )[1:]
+        trap_powers = np.asarray(trap_powers_jax, dtype=np.float64)
+
+        # Trap Power Statistics
+        trap_min = float(np.min(trap_powers))
+        trap_max = float(np.max(trap_powers))
+        trap_mean = float(np.mean(trap_powers))
+        trap_std = float(np.std(trap_powers))
+
+        trap_cv = float(trap_std / (trap_mean + 1e-12))
+
+        # Global Power Distributions
+        total_power = float(np.sum(flat_forward_intensity))
+        sig_power = float(np.sum(trap_powers))
+        bg_power = total_power - sig_power
+
+        # Background Floor & Ghost Trap Analysis
+        bg_mask = flat_trap_labels == 0
+        bg_intensities = flat_forward_intensity[bg_mask]
+        max_bg = float(np.max(bg_intensities))
+        mean_bg = float(np.mean(bg_intensities))
+
+        # Global Field Pearson Correlation
+        ff_centered = ff_int - np.mean(flat_forward_intensity)
+        target_centered = target_int - np.mean(target_int)
+        numerator = np.sum(ff_centered * target_centered)
+        denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
+        pearson = float(numerator / (denominator + 1e-12))
+
+        return cls(
+            efficiency=sig_power / total_power,
+            stray_light_fraction=bg_power / total_power,
+            pearson=pearson,
+            trap_cv=trap_cv,
+            trap_mean=trap_mean,
+            trap_min=trap_min,
+            trap_max=trap_max,
+            trap_uniformity_minmax=1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+            ghost_to_mean_ratio=max_bg / (trap_mean + 1e-12),
+            ghost_to_dimmest_ratio=max_bg / (trap_min + 1e-12),
+            signal_to_background_floor=trap_mean / (mean_bg + 1e-12),
+            trap_powers=trap_powers,
+        )
+
+    @classmethod
+    def from_solver(cls, solver: Any) -> "PerformanceMetrics":
+        return cls.compute(
+            forward_intensity=solver.forward_intensity,
+            target_intensity=solver.target_intensity,
+            trap_labels=solver.exp.trap_labels,
+            num_traps=solver.exp.num_traps,
+        )
+
 class HologramExperimentSolver:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):
         self.exp = experiment
@@ -699,6 +813,65 @@ class HologramExperimentSolver:
     @property
     def forward_intensity(self):
         return np.abs(self.__hologram.get_farfield()) ** 2
+
+    def compute_solver_metrics(self):
+        forward_intensity = self.forward_intensity
+        target_intensity = self.target_intensity
+        trap_labels = self.exp.trap_labels
+
+        flat_forward_intensity = forward_intensity.ravel()
+        flat_trap_labels = trap_labels.ravel()
+
+        # NB sum of forward intensity within each trap
+        trap_powers = jnp.bincount(
+            flat_trap_labels, 
+            weights=flat_forward_intensity, 
+            length=self.exp.num_traps + 1
+        )[1:]
+        
+        trap_powers = np.asarray(trap_powers)
+
+        trap_min = float(np.min(trap_powers))
+        trap_max = float(np.max(trap_powers))
+
+        trap_mean = float(np.mean(trap_powers))
+        trap_med = float(np.median(trap_powers))
+
+        trap_std = float(np.std(trap_powers))
+
+        # NB coefficient of variation: 
+        trap_cv = trap_std / (trap_mean + 1e-12)
+
+        total_power = float(np.sum(flat_forward_intensity))
+
+        # NB total power in the signal region (traps) and background region (ghost traps)
+        sig_power = float(np.sum(trap_powers))
+        bg_power = total_power - sig_power
+
+        bg_mask = (trap_labels == 0)
+        max_bg = float(np.max(flat_forward_intensity[bg_mask]))
+        med_bg = float(np.median(flat_forward_intensity[bg_mask]))
+        mean_bg = float(np.mean(flat_forward_intensity[bg_mask]))
+
+        ff_centered = forward_intensity - np.mean(flat_forward_intensity)
+        target_centered = target_intensity - np.mean(target_intensity)
+        pearson = float(np.sum(ff_centered * target_centered) / 
+                       (np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2)) + 1e-12))
+
+        return {
+            "efficiency": sig_power / total_power,
+            "stray_light_fraction": bg_power / total_power,
+            "pearson": pearson,
+            "trap_cv": trap_cv,
+            "trap_mean": trap_mean,
+            "trap_min": trap_min,
+            "trap_max": trap_max,
+            "trap_uniformity_minmax": 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+            "ghost_to_mean_ratio": max_bg / (trap_mean + 1e-12),
+            "ghost_to_dimmest_ratio": max_bg / (trap_min + 1e-12),
+            "signal_to_background_floor": trap_mean / (mean_bg + 1e-12),
+            "trap_powers": trap_powers,
+        }
 
     def plot(self, base_dir: str = "./results"):
         pass
