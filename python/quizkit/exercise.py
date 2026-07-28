@@ -376,6 +376,10 @@ if __name__ == "__main__":
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
+    #
+    # `"knm"``, this is ``(shape[1], shape[0])/2``.
+    # ``"kxy"``, this is ``(0,0)``.
+    # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
     ARRAY_CENTER = None
 
     METHOD = "GS"  # {GS, WGS}
