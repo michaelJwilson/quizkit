@@ -1,5 +1,6 @@
 import datetime
 import random
+import pickle
 
 import jax
 import jax.numpy as jnp
@@ -487,6 +488,34 @@ def plot_artifact_analysis(plot_path, residual_int, artifacts, artifact_stacks):
     fig.savefig(plot_path, dpi=300)
     plt.close(fig)
 
+def label_slm_fuzz(artifacts, target_extent):
+    """
+    Flags background artifacts that fall within the target trap bounding box as 'slm fuzz'.
+    target_extent should be (x_min, x_max, y_min, y_max).
+    """
+    x_min, x_max, y_min, y_max = target_extent
+    for art in artifacts:
+        cx, cy = art['cx'], art['cy']
+        # Check if the artifact center is inside the target bounding box
+        if (x_min <= cx <= x_max) and (y_min <= cy <= y_max):
+            art['is_fuzz'] = True
+        else:
+            art['is_fuzz'] = False
+    return artifacts
+
+def export_artifact_data_for_streamlit(filepath, residual_int, artifacts, artifact_stacks):
+    """
+    Serializes the background artifact arrays to disk for the Streamlit app.
+    """
+    data_bundle = {
+        'residual_int': residual_int,
+        'artifacts': artifacts,
+        'artifact_stacks': artifact_stacks
+    }
+    with open(filepath, 'wb') as f:
+        pickle.dump(data_bundle, f)
+    print(f"Artifact data exported to {filepath}")
+
 
 if __name__ == "__main__":
     WAVELENGTH = 780e-9  # m
@@ -619,6 +648,10 @@ if __name__ == "__main__":
         artifacts, 
         artifact_stacks
     )
+
+    artifacts = label_slm_fuzz(artifacts, target_extent)
+
+    export_artifact_data_for_streamlit("./results/data/artifact_data.pkl", residual_int, artifacts, artifact_stacks)
 
     exit(0)
 

@@ -30,6 +30,8 @@ dependencies = [
     "tensorboard",
     "torch",
     "aim",
+    "streamlit",
+    "plotly",
 ]
 
 [project.optional-dependencies]
