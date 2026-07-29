@@ -43,7 +43,8 @@ def smooth_phase_regularization(phase):
     penalty_y = 1.0 - jnp.cos(diff_y)
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
-
+# TODO must mirror compute_performance_metrics in run_phase_retrieval.py
+#      for consistency
 def compute_step_metrics_jax(
     inferred_intensity, target_intensity, trap_labels, num_traps
 ):
@@ -77,9 +78,8 @@ def compute_step_metrics_jax(
         "stray_light_fraction": bg_power / total_power,
         "pearson": pearson,
         "trap_cv": trap_cv,
-        "trap_uniformity_minmax": 1.0
+        "trap_uniformity": 1.0
         - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
-        "ghost_to_dimmest_ratio": max_bg / (trap_min + 1e-12),
     }
 
 
@@ -375,116 +375,3 @@ class JaxHologramBackend:
         final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
-
-
-# launch GUI with: aim up
-if __name__ == "__main__":
-    """
-    logging.basicConfig(level=logging.INFO)
-
-    # TODO HARDCODE
-    hdf5_path = "./results/data/exercise_gs_20260727_184334.h5"
-
-    slm_illumination, slm_meta = read_hdf5(
-        hdf5_path, group_name="slm", dataset_name="slm_illumination"
-    )
-
-    target_intensity, target_meta = read_hdf5(
-        hdf5_path, group_name="target", dataset_name="target_intensity"
-    )
-
-    WAVELENGTH = target_meta["wavelength"]  # m
-    PIXEL_PITCH = target_meta["pixel_pitch"]  # m
-    SLM_SHAPE = tuple(target_meta["slm_shape"])  # (height, width) in pixels
-    ARRAY_SHAPE = tuple(target_meta["array_shape"])
-    ARRAY_PITCH = tuple(target_meta["array_pitch"])
-    """
-    # assert slm_illumination.max() > 0.0
-    # assert target_intensity.max() > 0.0
-
-    """
-    slm_illumination = jnp.array(slm_illumination, dtype=jnp.float64)
-    target_intensity = jnp.array(target_intensity, dtype=jnp.float64)
-    target_amp = jnp.sqrt(target_intensity)
-
-    key = jax.random.PRNGKey(42)
-    initial_phase = jax.random.uniform(
-        key, SLM_SHAPE, minval=-jnp.pi, maxval=jnp.pi, dtype=jnp.float64
-    )
-
-    config = SolverConfig(method="GD", maxiter=200, smooth_phase=True, smooth_sigma=3)
-    logger.info(
-        f"Starting {config.method} optimization over {config.maxiter} iterations..."
-    )
-
-    final_phase, inferred_intensity, history = solve_hologram(
-        slm_illumination, target_amp, initial_phase, config
-    )
-    """
-    """
-    # TODO aim logging; track metrics and plots.
-    run = Run(experiment=f"{config.method}_optimization")
-    run["hparams"] = config.__dict__
-
-    for step_idx in range(config.maxiter):
-        if "loss" in history:
-            run.track(
-                history["loss"][step_idx].item(),
-                name="Total",
-                step=step_idx,
-                context={"subset": "Loss"},
-            )
-
-        run.track(
-            history["efficiency"][step_idx].item(),
-            name="Efficiency",
-            step=step_idx,
-            context={"subset": "Metrics"},
-        )
-        run.track(
-            history["uniformity"][step_idx].item(),
-            name="Uniformity",
-            step=step_idx,
-            context={"subset": "Metrics"},
-        )
-        run.track(
-            history["ghost_trap_ratio"][step_idx].item(),
-            name="Ghost_Trap_Ratio",
-            step=step_idx,
-            context={"subset": "Metrics"},
-        )
-        run.track(
-            history["stray_light_fraction"][step_idx].item(),
-            name="Stray_Light",
-            step=step_idx,
-            context={"subset": "Metrics"},
-        )
-        run.track(
-            history["pearson"][step_idx].item(),
-            name="Pearson",
-            step=step_idx,
-            context={"subset": "Metrics"},
-        )
-
-    run.close()
-    """
-    """
-    performance_metrics = compute_performance_metrics(
-        inferred_intensity, target_intensity
-    )
-
-    performance_metrics = {k: float(v) for k, v in performance_metrics.items()}
-    pprint(performance_metrics)
-
-    extent = get_trap_zoom(target_intensity)
-    x_min, x_max, y_min, y_max = extent
-
-    plot_phase_retrieval_results(
-        "./results/plots/phase_retrieval_results.pdf",
-        final_phase,
-        inferred_intensity[y_min:y_max, x_min:x_max],
-        extent,
-    )
-
-    logger.info("Done.")
-    """
