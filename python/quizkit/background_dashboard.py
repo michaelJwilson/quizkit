@@ -109,7 +109,7 @@ def load_data(base_dir: str, r_hash: str, s_hash: str):
         
     try:
         with h5py.File(run_dir / "experiment.h5", "r") as f:
-            recip_coords = f["reciprocal_coords/reciprocal_coords"][:]
+            recip_coords = f["dual_coords/dual_coords"][:]
     except Exception:
         recip_coords = None
 
@@ -220,7 +220,7 @@ if recip_coords is not None and len(recip_coords) > 0:
         x=recip_coords[:, 1], y=recip_coords[:, 0],
         mode="markers",
         marker=dict(color="magenta", size=21, symbol="circle-open", line=dict(width=1.5)),
-        hoverinfo="skip", showlegend=True, name="Reciprocal Traps"
+        hoverinfo="skip", showlegend=True, name="Dual Traps"
     )
 
 py, px_coords = np.where(perimeter_mask)

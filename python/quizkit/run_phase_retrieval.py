@@ -712,7 +712,7 @@ class PerformanceMetrics(ConfigMixin):
         "efficiency": "Fraction of forward power within the target trap regions",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
-        "efficiency_reciprocal": "Fraction of forward power within the reciprocal array",
+        "efficiency_dual": "Fraction of forward power within the dual array",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_cv": "Coefficient of variation of integrated trap powers",
         "trap_med": "Median integrated trap power",
@@ -727,7 +727,7 @@ class PerformanceMetrics(ConfigMixin):
     efficiency: float
     stray_light_fraction: float
     efficiency_perimeter: float
-    efficiency_reciprocal: float
+    efficiency_dual: float
     pearson: float
     trap_cv: float
     trap_med: float
@@ -747,7 +747,7 @@ class PerformanceMetrics(ConfigMixin):
         trap_labels: jnp.ndarray | np.ndarray,
         trap_array_perimeter_mask: jnp.ndarray | np.ndarray,
         num_traps: int,
-        reciprocal_mask: np.ndarray,
+        dual_mask: np.ndarray,
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
@@ -773,15 +773,15 @@ class PerformanceMetrics(ConfigMixin):
 
         total_power = float(np.sum(flat_forward_intensity))
         total_trap_perimeter_power = float(np.sum(ff_int[trap_array_perimeter_mask]))
-        total_trap_reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
+        total_trap_dual_power = float(np.sum(ff_int[dual_mask]))
 
         sig_power = float(np.sum(trap_powers))
         bg_power = total_power - sig_power
 
         efficiency_perimeter = total_trap_perimeter_power / (total_power + 1e-12)
 
-        reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
-        efficiency_reciprocal = reciprocal_power / (total_power + 1e-12)
+        dual_power = float(np.sum(ff_int[dual_mask]))
+        efficiency_dual = dual_power / (total_power + 1e-12)
 
         bg_mask = flat_trap_labels == 0
         bg_intensities = flat_forward_intensity[bg_mask]
@@ -801,7 +801,7 @@ class PerformanceMetrics(ConfigMixin):
             efficiency=sig_power / total_power,
             stray_light_fraction=bg_power / total_power,
             efficiency_perimeter=efficiency_perimeter,
-            efficiency_reciprocal=efficiency_reciprocal,
+            efficiency_dual=efficiency_dual,
             pearson=pearson,
             trap_cv=trap_cv,
             trap_med=trap_med,
@@ -822,7 +822,7 @@ class PerformanceMetrics(ConfigMixin):
             trap_labels=solver.exp.trap_labels,
             trap_array_perimeter_mask=solver.exp.trap_array_perimeter_mask,
             num_traps=solver.exp.num_traps,
-            reciprocal_mask=solver.exp.reciprocal_mask,
+            dual_mask=solver.exp.dual_mask,
         )
 
     @classmethod
@@ -1081,20 +1081,20 @@ class HologramExperimentSolver:
             ylabel=r"$k_m$ [knm]",
         )
 
-        # NB forward intensity reciprocal trap stack
-        reciprocal_stack_mean = reduce_stack_similar_crops(
+        # NB forward intensity dual trap stack
+        dual_stack_mean = reduce_stack_similar_crops(
             self.forward_intensity,
-            self.exp.reciprocal_coords,
+            self.exp.dual_coords,
             self.stack_h,
             self.stack_w,
             reducer=jnp.mean,
         )
 
         plot_stack_with_marginals(
-            plot_path=plot_dir / "reciprocal_trap_stack_forward.pdf",
-            field=np.log(reciprocal_stack_mean + 1e-12),
+            plot_path=plot_dir / "dual_trap_stack_forward.pdf",
+            field=np.log(dual_stack_mean + 1e-12),
             cmap="inferno",
-            title="reciprocal trap stack: mean",
+            title="dual trap stack: mean",
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
