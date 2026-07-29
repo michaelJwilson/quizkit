@@ -1,33 +1,27 @@
 import atexit
-import json
 import logging
 import random
 import time
-import uuid  # TODO
-from dataclasses import asdict, dataclass, field
-from enum import Enum
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
-import aim.ext.cleanup
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 from aim import Run
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
 from scipy.ndimage import binary_dilation, find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
 
-from quizkit.configs import (ConfigMixin, RunConfig, SolverConfig, TrapConfig,
+from quizkit.configs import (ConfigMixin, RunConfig, SolverConfig,
                              TrapConfigs)
-from quizkit.hologram_experiment import (HologramExperiment,
-                                         encode_target_traps, get_trap_zoom)
+from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
-# from functools import cached_property
 from quizkit.plotting import plot_scalar_field
 from quizkit.writers import write_hdf5
+
+import aim.ext.cleanup
 
 # TODO HACK aim thread issue for python 3.12 (TBC)
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
