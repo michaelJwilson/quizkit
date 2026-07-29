@@ -71,10 +71,9 @@ class RunConfig(ConfigMixin):
                 f"'{type(self).__name__}' object has no attribute '{name}'"
             )
 
-
 @dataclass
 class SolverConfig(ConfigMixin):
-    method: str  # {"GS", "WGS", "GD"}
+    method: str  # {"GS", "WGS", "GD", "AA", "HIO"}
     maxiter: int = 200
 
     solver_backend: str | None = None
@@ -86,9 +85,12 @@ class SolverConfig(ConfigMixin):
     loss_norm: str = "L2"  # {"L1", "L2"}
     learning_rate: float = 0.1
 
+    # --- New Algorithm Hyperparameters ---
+    aa_alpha: float = 0.5   # Feedback parameter for Adaptive-Additive
+    hio_beta: float = 0.8   # Feedback parameter for Fienup HIO
+    
     random_seed: int = 42
 
-    # TODO HACK
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 

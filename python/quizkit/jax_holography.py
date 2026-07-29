@@ -44,7 +44,6 @@ def smooth_phase_regularization(phase):
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
 
-# TODO
 def compute_step_metrics_jax(
     inferred_intensity, target_intensity, trap_labels, num_traps
 ):
@@ -104,27 +103,25 @@ class JaxHologramBackend:
         self.history = {}
 
     def optimize(self):
-        if self.config.method.upper() == "GS":
+        method = self.config.method.upper()
+        if method == "GS":
             self.final_phase, self.final_intensity, self.history = self.__run_gs()
-        elif self.config.method.upper() == "GD":
+        elif method == "GD":
             self.final_phase, self.final_intensity, self.history = self.__run_gd()
+        elif method == "AA":
+            self.final_phase, self.final_intensity, self.history = self.__run_aa()
+        elif method == "HIO":
+            self.final_phase, self.final_intensity, self.history = self.__run_hio()
         else:
-            raise ValueError(
-                f"JAX backend does not support method: {self.config.method}"
-            )
+            raise ValueError(f"JAX backend does not support method: {method}")
 
-    # TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
     def __run_gs(self):
-        logger.info(
-            f"Solving for Gerchberg-Saxton with {self.config.maxiter} iterations."
-        )
+        logger.info(f"Solving for Gerchberg-Saxton with {self.config.maxiter} iterations.")
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)
         initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
-        blur_otf = get_gaussian_blur_otf(
-            self.source_amp.shape, self.config.smooth_sigma
-        )
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
 
         def gs_step(phase, _):
             complex_nf = source_amp_native * jnp.exp(1j * phase)
@@ -143,25 +140,128 @@ class JaxHologramBackend:
 
             inferred_intensity = jnp.abs(complex_ff) ** 2
             metrics = compute_step_metrics_jax(
-                inferred_intensity,
-                target_amp_native**2,
-                self.trap_labels,
-                self.num_traps,
+                inferred_intensity, target_amp_native**2, self.trap_labels, self.num_traps
             )
-
             return new_phase, metrics
 
         final_phase_native, history = jax.lax.scan(
             gs_step, initial_phase_native, jnp.arange(self.config.maxiter)
         )
 
-        final_complex_ff_native = propagate_ff_native(
-            source_amp_native * jnp.exp(1j * final_phase_native)
+        final_complex_ff_native = propagate_ff_native(source_amp_native * jnp.exp(1j * final_phase_native))
+        final_phase = jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        final_intensity = jnp.fft.fftshift(jnp.abs(final_complex_ff_native) ** 2)
+
+        return np.asarray(final_phase), np.asarray(final_intensity), history
+
+    def __run_aa(self):
+        logger.info(f"Solving for Adaptive-Additive (AA) with {self.config.maxiter} iterations.")
+
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+        
+        # Hyperparameter fallback if not present in SolverConfig
+        alpha = getattr(self.config, 'aa_alpha', 0.5)
+
+        def aa_step(carry, _):
+            phase, a_comp = carry
+            complex_nf = source_amp_native * jnp.exp(1j * phase)
+            complex_ff = propagate_ff_native(complex_nf)
+
+            ff_amp = jnp.abs(complex_ff)
+            ff_phase = jnp.angle(complex_ff)
+
+            # AA updates the target strictly in the signal regions.
+            # Background is suppressed to 0.0.
+            a_comp_new = jnp.where(
+                target_amp_native > 0,
+                a_comp + alpha * (target_amp_native - ff_amp),
+                0.0 
+            )
+            a_comp_new = jnp.maximum(a_comp_new, 0.0)
+
+            constrained_ff = a_comp_new * jnp.exp(1j * ff_phase)
+            complex_nf_new = propagate_nf_native(constrained_ff)
+            new_phase = jnp.angle(complex_nf_new)
+
+            if self.config.smooth_phase:
+                complex_phase = jnp.exp(1j * new_phase)
+                blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+                new_phase = jnp.angle(blurred_complex)
+
+            inferred_intensity = ff_amp ** 2
+            metrics = compute_step_metrics_jax(
+                inferred_intensity, target_amp_native**2, self.trap_labels, self.num_traps
+            )
+            return (new_phase, a_comp_new), metrics
+
+        # State carry includes both the phase and the running compensated amplitude map
+        init_state = (
+            initial_phase_native.astype(jnp.float64), 
+            target_amp_native.astype(jnp.float64)
         )
 
-        final_phase = (
-            jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        (final_phase_native, _), history = jax.lax.scan(
+            aa_step, init_state, jnp.arange(self.config.maxiter)
         )
+
+        final_complex_ff_native = propagate_ff_native(source_amp_native * jnp.exp(1j * final_phase_native))
+        final_phase = jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        final_intensity = jnp.fft.fftshift(jnp.abs(final_complex_ff_native) ** 2)
+
+        return np.asarray(final_phase), np.asarray(final_intensity), history
+
+    def __run_hio(self):
+        logger.info(f"Solving for Fienup HIO with {self.config.maxiter} iterations.")
+
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+        
+        # Hyperparameter fallback if not present in SolverConfig
+        beta = getattr(self.config, 'hio_beta', 0.8)
+
+        def hio_step(carry, _):
+            phase, g_prev = carry
+            complex_nf = source_amp_native * jnp.exp(1j * phase)
+            complex_ff = propagate_ff_native(complex_nf)
+
+            signal_mask = target_amp_native > 0
+
+            # HIO Far-field update rule
+            g_new = jnp.where(
+                signal_mask,
+                target_amp_native * jnp.exp(1j * jnp.angle(complex_ff)), # Project signal constraint
+                g_prev - beta * complex_ff                               # Accumulate negative background error
+            )
+
+            complex_nf_new = propagate_nf_native(g_new)
+            new_phase = jnp.angle(complex_nf_new)
+
+            if self.config.smooth_phase:
+                complex_phase = jnp.exp(1j * new_phase)
+                blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+                new_phase = jnp.angle(blurred_complex)
+
+            inferred_intensity = jnp.abs(complex_ff) ** 2
+            metrics = compute_step_metrics_jax(
+                inferred_intensity, target_amp_native**2, self.trap_labels, self.num_traps
+            )
+            return (new_phase, g_new), metrics
+
+        # State carry includes both the phase and the memory of the previous constrained far-field
+        init_g_prev = jnp.zeros_like(target_amp_native, dtype=jnp.complex128)
+        init_state = (initial_phase_native, init_g_prev)
+        
+        (final_phase_native, _), history = jax.lax.scan(
+            hio_step, init_state, jnp.arange(self.config.maxiter)
+        )
+
+        final_complex_ff_native = propagate_ff_native(source_amp_native * jnp.exp(1j * final_phase_native))
+        final_phase = jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
         final_intensity = jnp.fft.fftshift(jnp.abs(final_complex_ff_native) ** 2)
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
@@ -173,7 +273,6 @@ class JaxHologramBackend:
 
         target_intensity_native = target_amp_native**2
 
-        # TODO bail out on loss or parameter convergence
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
 
         blur_otf = get_gaussian_blur_otf(

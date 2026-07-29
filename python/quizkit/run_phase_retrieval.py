@@ -999,7 +999,7 @@ def run_phase_retrieval():
         for random_seed in np.arange(42, 45 + 1, 1, dtype=int):
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method="GD",
+                    method="AA",
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,
