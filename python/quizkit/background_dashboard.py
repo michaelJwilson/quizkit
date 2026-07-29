@@ -291,7 +291,7 @@ df = pd.DataFrame(df_list)
 col_left, col_right = st.columns([3, 1], gap="large")
 
 with col_left:
-    st.subheader("Intensity Plane")
+    st.subheader("Forward intensity")
     map_container = st.container()
     
     if perimeter_mask is not None:
@@ -319,7 +319,7 @@ slm_h, slm_w = run_config.get("slm_shape", (1200, 1920))
 fig_map.add_scatter(
     x=[slm_w / 2.0], y=[slm_h / 2.0],
     mode="markers",
-    marker=dict(color="gold", size=56, symbol="circle-open", line=dict(width=2.5)),
+    marker=dict(color="gold", size=32, alpha=0.5, symbol="circle-open", line=dict(width=2.5)),
     hoverinfo="skip", showlegend=True, name="0th Order"
 )
 
