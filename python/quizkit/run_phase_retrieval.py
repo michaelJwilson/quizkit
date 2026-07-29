@@ -1188,8 +1188,10 @@ class HologramExperimentSolver:
 
 
 def run_phase_retrieval():
-    slm_shape = (1200, 1920)  # (height, width) in pixels,
+    method="GS"
+    solver_backend="jax",  # {"slm_suite", "jax"}
     num_random_seeds = 1
+    slm_shape = (1200, 1920)  # (height, width) in pixels,
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
@@ -1222,11 +1224,11 @@ def run_phase_retrieval():
 
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method="GS", # {"GS", "GD", "AA", "HIO"}
+                    method=method, # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,
-                    solver_backend="jax",  # {"slm_suite", "jax"}
+                    solver_backend=solver_backend,  # {"slm_suite", "jax"}
                 )
 
                 pprint(solver_config, expand_all=True)
