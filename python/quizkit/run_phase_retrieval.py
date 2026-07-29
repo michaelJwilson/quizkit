@@ -979,7 +979,7 @@ def run_phase_retrieval():
     trap_config = TrapConfigs.ON_AXIS.to_config()
     trap_config_off_center = TrapConfigs.OFF_AXIS.to_config()
 
-    trap_configs = (trap_config, trap_config_off_center)
+    trap_configs = (trap_config,)
 
     for trap_config in trap_configs:
         run_config = RunConfig(
@@ -999,7 +999,7 @@ def run_phase_retrieval():
         for random_seed in np.arange(42, 45 + 1, 1, dtype=int):
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method="AA",
+                    method="HIO", # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,

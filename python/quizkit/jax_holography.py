@@ -89,7 +89,15 @@ class JaxHologramBackend:
         self.config = config
 
         self.source_amp = jnp.array(self.exp.slm_illumination)
-        self.target_amp = jnp.sqrt(jnp.array(self.exp.target_intensity))
+        
+        raw_target_amp = jnp.sqrt(jnp.array(self.exp.target_intensity))
+        
+        source_power = jnp.sum(self.source_amp ** 2)
+        target_power = jnp.sum(raw_target_amp ** 2)
+        
+        scale_factor = jnp.sqrt(source_power / (target_power + 1e-12))
+        self.target_amp = raw_target_amp * scale_factor
+
         self.trap_labels = jnp.array(self.exp.trap_labels)
         self.num_traps = self.exp.num_traps
 
