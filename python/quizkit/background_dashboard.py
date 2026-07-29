@@ -1,6 +1,7 @@
 import sys
 import argparse
 import json
+import base64
 from pathlib import Path
 
 import h5py
@@ -149,6 +150,14 @@ def load_data(base_dir: str, r_hash: str, s_hash: str):
     )
 
 
+def render_pdf(file_path):
+    """Helper to render a PDF using a base64 iframe inside Streamlit."""
+    with open(file_path, "rb") as f:
+        base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
+
 try:
     (
         exp,
@@ -164,15 +173,25 @@ except Exception as e:
     st.error(f"Failed to load data:\n\n{e}")
     st.stop()
 
+# ==========================================
+# Sidebar Configurations
+# ==========================================
 st.sidebar.divider()
-st.sidebar.subheader("Run Configuration")
-st.sidebar.markdown(f"**Trap Type:** `{exp.run_config.trap_config.trap_type}`")
-st.sidebar.markdown(f"**Method:** `{solver_config.get('method', 'Unknown')}`")
-st.sidebar.markdown(
-    f"**Backend:** `{solver_config.get('solver_backend', 'slm_suite')}`"
-)
-st.sidebar.markdown(f"**Smooth Phase:** `{solver_config.get('smooth_phase', False)}`")
+st.sidebar.subheader("Configurations")
 
+with st.sidebar.expander("Run Config", expanded=True):
+    st.json(exp.run_config.to_dict())
+
+with st.sidebar.expander("Solver Config", expanded=False):
+    st.json(solver_config)
+
+with st.sidebar.expander("Trap Config", expanded=False):
+    st.json(exp.run_config.trap_config.to_dict())
+
+
+# ==========================================
+# Data Processing
+# ==========================================
 total_bg_power = np.sum(residual_int)
 df_list = []
 perimeter_mask = np.array(exp.trap_array_perimeter_mask)
@@ -187,53 +206,44 @@ for i, art in enumerate(artifacts):
 
 df = pd.DataFrame(df_list)
 
-col_left, col_right = st.columns([3, 1], gap="large")
+# ==========================================
+# Main Layout: Metrics & Global Map
+# ==========================================
+st.subheader("Performance Metrics")
+method_name = solver_config.get("method", "Solver")
+metric_names = [k for k in metrics.keys() if k != "trap_powers"]
+ui_rows = []
 
-with col_left:
-    st.subheader("Performance Metrics")
-    method_name = solver_config.get("method", "Solver")
-    metric_names = [k for k in metrics.keys() if k != "trap_powers"]
-    ui_rows = []
+for m in metric_names:
+    val = metrics.get(m, np.nan)
+    if isinstance(val, float) and not np.isnan(val):
+        val_str = (
+            f"{val:.2e}"
+            if (val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4))
+            else f"{val:.4f}"
+        )
+    else:
+        val_str = str(val)
 
-    for m in metric_names:
-        val = metrics.get(m, np.nan)
-        if isinstance(val, float) and not np.isnan(val):
-            val_str = (
-                f"{val:.2e}"
-                if (val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4))
-                else f"{val:.4f}"
-            )
-        else:
-            val_str = str(val)
+    desc = PerformanceMetrics._DESCRIPTIONS.get(m, "")
+    ui_rows.append({"Metric Key": m, method_name: val_str, "Description": desc})
 
-        desc = PerformanceMetrics._DESCRIPTIONS.get(m, "")
-        ui_rows.append({"Metric Key": m, method_name: val_str, "Description": desc})
+st.dataframe(pd.DataFrame(ui_rows), use_container_width=True, hide_index=True)
 
-    st.dataframe(pd.DataFrame(ui_rows), use_container_width=True, hide_index=True)
+st.divider()
+st.subheader("Forward Intensity Map")
 
-    st.subheader("Forward intensity")
+col_toggles1, col_toggles2 = st.columns(2)
+with col_toggles1:
+    use_log_scale = st.checkbox("Log Scale Intensity", value=True)
+with col_toggles2:
+    exclude_fuzz = st.checkbox("Exclude interference artefacts", value=False)
 
-    col_toggles1, col_toggles2 = st.columns(2)
-    with col_toggles1:
-        use_log_scale = st.checkbox("Log Scale Intensity", value=True)
-    with col_toggles2:
-        exclude_fuzz = st.checkbox("Exclude interference artefacts", value=False)
-
-    active_df = df[~df["is_fuzz"]].copy() if exclude_fuzz else df.copy()
-    map_container = st.container()
+active_df = df[~df["is_fuzz"]].copy() if exclude_fuzz else df.copy()
 
 if active_df.empty:
     st.warning("No artifacts match the current filters.")
     st.stop()
-
-with col_right:
-    st.subheader("Top Artifacts")
-    display_df = active_df.head(5)[
-        ["id", "cx", "cy", "rel_power", "is_fuzz"]
-    ].set_index("id")
-    st.dataframe(
-        display_df.style.format({"rel_power": "{:.2f}%"}), use_container_width=True
-    )
 
 if use_log_scale:
     ff_int_plot = np.log(ff_int + 1e-12)
@@ -316,14 +326,29 @@ fig_map.update_layout(
     coloraxis_showscale=False,
 )
 
-with map_container:
-    event = st.plotly_chart(
-        fig_map, on_select="rerun", selection_mode="points", use_container_width=True
+# Render map and capture selection events
+event = st.plotly_chart(
+    fig_map, on_select="rerun", selection_mode="points", use_container_width=True
+)
+
+# ==========================================
+# Artifact Viewer (Below Map)
+# ==========================================
+st.divider()
+st.subheader("Artifact Viewer")
+
+col_art_list, col_art_view = st.columns([1, 2], gap="large")
+
+with col_art_list:
+    st.markdown("**Top Artifacts Overview**")
+    display_df = active_df.head(5)[
+        ["id", "cx", "cy", "rel_power", "is_fuzz"]
+    ].set_index("id")
+    st.dataframe(
+        display_df.style.format({"rel_power": "{:.2f}%"}), use_container_width=True
     )
-
-with col_right:
-    st.divider()
-
+    
+    # Process Map Selection
     selected_id_from_map = int(active_df["id"].iloc[0])
     if event and event.selection.points:
         clicked_trace_idx = event.selection.points[0]["curve_number"]
@@ -336,13 +361,15 @@ with col_right:
         fuzz_label = " (Inside Perimeter)" if row["is_fuzz"] else " (Ghost Order)"
         return f"Rank #{row['id']} - Rel Power: {row['rel_power']:.2f}%{fuzz_label}"
 
+    st.markdown("**Inspect Target Artifact**")
     selected_id = st.selectbox(
-        "Selected Artifact Viewer",
+        "Select an artifact from the list or map:",
         options=active_df["id"],
         index=active_df["id"].tolist().index(selected_id_from_map),
         format_func=format_dropdown,
     )
 
+with col_art_view:
     if artifact_stacks is not None and len(artifact_stacks) > 0:
         stack_idx = selected_id - 1
         if stack_idx < len(artifact_stacks):
@@ -354,9 +381,8 @@ with col_right:
                 stack_plot = current_stack
 
             fig_stack = px.imshow(stack_plot, color_continuous_scale="viridis")
-            cy_s, cx_s = current_stack.shape[0] // 2, current_stack.shape[1] // 2
-
             fig_stack.update_layout(
+                height=450,
                 margin=dict(l=0, r=0, t=0, b=0),
                 coloraxis_showscale=False,
                 xaxis_visible=False,
@@ -365,3 +391,42 @@ with col_right:
             st.plotly_chart(fig_stack, use_container_width=True)
     else:
         st.info("Artifact stack imagery missing from phase solution HDF5.")
+
+
+# ==========================================
+# Run Output Plots Grouping
+# ==========================================
+st.divider()
+st.subheader("Run Output Plots")
+
+# Identify plot directories
+run_dir_path = Path(args.base_dir) / f"run_{run_hash}"
+phase_dir_path = run_dir_path / "phase_retrieval" / solver_hash
+exp_plots_dir = run_dir_path / "plots"
+pr_plots_dir = phase_dir_path / "plots"
+
+# Tabs for logical grouping
+tab_pr, tab_exp = st.tabs(["Phase Retrieval Results", "Experiment Setup"])
+
+with tab_pr:
+    if pr_plots_dir.exists() and any(pr_plots_dir.iterdir()):
+        pr_files = [f for f in pr_plots_dir.iterdir() if f.suffix.lower() == '.pdf']
+        if pr_files:
+            # Create a dropdown to select which plot to view to save vertical space
+            selected_pr_plot = st.selectbox("Select Phase Retrieval Plot", pr_files, format_func=lambda x: x.name)
+            render_pdf(selected_pr_plot)
+        else:
+            st.info("No PDF plots found in Phase Retrieval output.")
+    else:
+        st.info("Phase Retrieval plots directory does not exist or is empty.")
+
+with tab_exp:
+    if exp_plots_dir.exists() and any(exp_plots_dir.iterdir()):
+        exp_files = [f for f in exp_plots_dir.iterdir() if f.suffix.lower() == '.pdf']
+        if exp_files:
+            selected_exp_plot = st.selectbox("Select Experiment Plot", exp_files, format_func=lambda x: x.name)
+            render_pdf(selected_exp_plot)
+        else:
+            st.info("No PDF plots found in Experiment output.")
+    else:
+        st.info("Experiment plots directory does not exist or is empty.")
