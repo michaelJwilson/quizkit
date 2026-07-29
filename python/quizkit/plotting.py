@@ -204,7 +204,7 @@ def plot_unraveled_trap_profiles(
         return
         
     # 2. Sort traps by max height (ascending, so the "mountains" grow left-to-right)
-    profiles_data.sort(key=lambda item: item["max_val"])
+    profiles_data.sort(key=lambda item: item["max_val"], reverse=True))
     
     # Global max is now the last item in the sorted list
     global_max = profiles_data[-1]["max_val"]
@@ -234,14 +234,14 @@ def plot_unraveled_trap_profiles(
         ax2.plot(x_shifted_y, prof_y_norm, color="magenta", alpha=0.8, linewidth=1.0)
         ax2.fill_between(x_shifted_y, 0, prof_y_norm, color="magenta", alpha=0.05)
 
-    ax1.set_title("Unraveled 1D X-Profiles (Sorted by Height, Staggered Horizontally)")
+    ax1.set_title("Trap x-profile")
     ax1.set_xlabel(rf"Local X Distance $+ (Rank \times {x_stagger_step:.2f})$")
-    ax1.set_ylabel("Globally Normalized Intensity")
+    ax1.set_ylabel("Intensity [a.u.]")
     ax1.set_ylim(bottom=0)
     
-    ax2.set_title("Unraveled 1D Y-Profiles (Sorted by Height, Staggered Horizontally)")
+    ax2.set_title("Trap y-profile")
     ax2.set_xlabel(rf"Local Y Distance $+ (Rank \times {y_stagger_step:.2f})$")
-    ax2.set_ylabel("Globally Normalized Intensity")
+    ax2.set_ylabel("Intensity [a.u.]")
     ax2.set_ylim(bottom=0)
     
     fig_prof.tight_layout()
