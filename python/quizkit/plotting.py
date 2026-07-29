@@ -86,46 +86,28 @@ def plot_stack_with_marginals(
     
     cy, cx = field.shape[0] // 2, field.shape[1] // 2
 
-    # 1. Shift the extent so that 0 is in the center
-    if extent:
-        x_mid = (extent[0] + extent[1]) / 2.0
-        y_mid = (extent[2] + extent[3]) / 2.0
-        centered_extent = [
-            extent[0] - x_mid, extent[1] - x_mid,
-            extent[2] - y_mid, extent[3] - y_mid
-        ]
-    else:
-        # If no extent is provided, use pixel distance from center
-        centered_extent = [
-            -cx, field.shape[1] - cx,
-            -cy, field.shape[0] - cy
-        ]
-
-    # 2. Main 2D field (Must use the new centered_extent so axes share correctly)
-    im = ax.imshow(field, cmap=cmap, extent=centered_extent, **imshow_kwargs)
-    ax.set_aspect("equal")
-
-    # 3. Setup Dividers
     divider = make_axes_locatable(ax)
     ax_top = divider.append_axes("top", size="25%", pad=0.1, sharex=ax)
     ax_right = divider.append_axes("right", size="25%", pad=0.1, sharey=ax)
     cax = divider.append_axes("right", size="5%", pad=0.2)
 
-    # 4. X-slice (Top marginal)
-    x_axis = np.linspace(centered_extent[0], centered_extent[1], field.shape[1])
+    x_axis = np.arange(field.shape[1])
+    if extent:
+        x_axis = np.linspace(extent[0], extent[1], field.shape[1])
     ax_top.plot(x_axis, field[cy, :], color="black", linewidth=1.5)
     ax_top.tick_params(axis="x", labelbottom=False)
-    ax_top.set_ylabel("y-profile")
+    ax_top.set_ylabel(r"$y$ profile")
 
-    # 5. Y-slice (Right marginal)
-    y_axis = np.linspace(centered_extent[2], centered_extent[3], field.shape[0])
-    # Note: X and Y are swapped for the right plot
+    y_axis = np.arange(field.shape[0])
+    if extent:
+        y_axis = np.linspace(extent[2], extent[3], field.shape[0])
     ax_right.plot(field[:, cx], y_axis, color="black", linewidth=1.5)
     ax_right.tick_params(axis="y", labelleft=False)
-    ax_right.set_xlabel("x-profile")
+    ax_right.set_xlabel(r"$x$ profile") 
+
 
     if title:
-        ax_top.set_title(title, fontsize=14)
+        ax_top.set_title(title, fontsize=12)
     if xlabel:
         ax.set_xlabel(xlabel)
     if ylabel:

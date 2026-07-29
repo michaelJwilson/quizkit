@@ -287,13 +287,13 @@ class JaxHologramBackend:
             self.source_amp.shape, self.config.smooth_sigma
         )
 
-        def loss_fn(phase, norm=True):
+        def loss_fn(phase, normed=False):
             complex_phasor = jnp.exp(1j * phase)
             complex_nf = source_amp_native * complex_phasor
             complex_ff = propagate_ff_native(complex_nf)
             forward_intensity = jnp.abs(complex_ff) ** 2
 
-            if norm:
+            if normed:
                 norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
                 norm_target = target_intensity_native / (
                     jnp.mean(target_intensity_native) + 1e-12
