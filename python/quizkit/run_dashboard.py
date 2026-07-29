@@ -216,7 +216,7 @@ else:
             line_color="white",          # White borders on scatter points
             line_width=0.5,
             grid=False,                  # Remove grid for a cleaner look
-            responsive=True, min_height=350
+            responsive=True, min_height=380
         )
 
     @pn.depends(w_x_axis, w_color_by, w_trap_filter, w_method_filter)
@@ -229,17 +229,7 @@ else:
             alpha=0.7, bins=30, 
             cmap="Category10", 
             line_width=0,                # Remove bin borders
-            responsive=True, min_height=350
-        )
-
-    @pn.depends(w_x_axis, w_color_by, w_trap_filter, w_method_filter)
-    def plot_histogram(x, color_col, traps, methods):
-        filtered = get_filtered_df(traps, methods)
-        if filtered.is_empty():
-            return "No data."
-
-        return filtered.hvplot.hist(
-            y=x, by=color_col, alpha=0.6, bins=30, responsive=True, min_height=350
+            responsive=True, min_height=380
         )
 
     # --- Reactive Tabulator Table ---
@@ -265,28 +255,24 @@ else:
         w_method_filter,
     )
 
-    main_content = pn.Column(
-        kpi_indicators,
-        pn.Row(
-            pn.Card(
-                plot_scatter, title="Metric Scatter Plot", sizing_mode="stretch_both"
-            ),
-            pn.Card(
-                plot_histogram, title="1D Distribution", sizing_mode="stretch_both"
-            ),
-            min_height=400,
-            sizing_mode="stretch_width",
-        ),
-        pn.Card(filtered_table, title="Run Data", sizing_mode="stretch_width"),
+    # 1. Group the plots into a dynamic Tab component
+    plot_tabs = pn.Tabs(
+        ("Scatter Plot", plot_scatter),
+        ("1D Distribution", plot_histogram),
+        dynamic=True, # Renders only the active tab to save memory
+        sizing_mode="stretch_both",
     )
 
-    scatter_card = pn.Card(plot_scatter, title="Metric Scatter Plot", margin=10, sizing_mode="stretch_both")
-    hist_card = pn.Card(plot_histogram, title="1D Distribution", margin=10, sizing_mode="stretch_both")
+    # 2. Wrap the tabs in a single styling Card
+    tabs_card = pn.Card(plot_tabs, title="Metric Exploration", margin=10, min_height=450, sizing_mode="stretch_both")
+    
+    # 3. Table Card
     table_card = pn.Card(filtered_table, title="Run Data", margin=10, sizing_mode="stretch_width")
 
+    # 4. Main UI Column
     main_content = pn.Column(
         kpi_indicators,
-        pn.Row(scatter_card, hist_card, min_height=420, sizing_mode="stretch_width"),
+        tabs_card,
         table_card
     )
 
