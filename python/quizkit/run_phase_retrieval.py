@@ -769,6 +769,8 @@ class HologramExperimentSolver:
 
         self.config.solver_runtime = time.time() - start_time
 
+        logger.info(f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s")
+
     def log_to_aim(self, experiment_name: str = "phase_retrieval_sweep"):
         """Pushes tracked JAX history metrics to Aim."""
         if self.backend_type != "jax":
@@ -971,9 +973,9 @@ def run_phase_retrieval():
     exp.plot(base_dir="./results")
     exp.write_h5(base_dir="./results")
 
-    for random_seed in (42):
+    for random_seed in (42,):
         solver_config = SolverConfig(
-            method="GS",
+            method="GD",
             maxiter=200,
             random_seed=random_seed,
             solver_backend="jax", # {"slm_suite", "jax"}

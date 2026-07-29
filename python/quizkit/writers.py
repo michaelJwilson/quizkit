@@ -41,7 +41,7 @@ def write_hdf5(
             for key, value in metadata.items():
                 dataset.attrs[key] = value
 
-        logger.info(
+        logger.debug(
             f"Successfully written {data.shape} dataset to {filepath} at {group_name}/{dataset_name}"
         )
 

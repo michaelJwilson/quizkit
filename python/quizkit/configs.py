@@ -59,7 +59,7 @@ class RunConfig(ConfigMixin):
     trap_config: TrapConfig
     comment: Optional[str] = None
 
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex[:7])
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
@@ -93,7 +93,7 @@ class SolverConfig(ConfigMixin):
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex)
+    hash: str = field(default_factory=lambda: uuid.uuid4().hex[:7])
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )

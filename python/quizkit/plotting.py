@@ -54,7 +54,7 @@ def plot_scalar_field(
 
     _add_colorbar(ax, im, cbar_label)
 
-    logger.info(f"Writing {plot_path}.")
+    logger.debug(f"Writing {plot_path}.")
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")

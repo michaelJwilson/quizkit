@@ -11,11 +11,7 @@ import optax
 # from rich.pretty import pprint
 # from quizkit.readers import read_hdf5
 from quizkit.configs import SolverConfig
-from quizkit.takehome import (
-    # plot_phase_retrieval_results,
-    # get_trap_zoom,
-    HologramExperiment,
-)
+from quizkit.hologram_experiment import HologramExperiment
 
 import atexit
 import aim.ext.cleanup
