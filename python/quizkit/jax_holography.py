@@ -1,5 +1,4 @@
 import logging
-
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -10,15 +9,8 @@ import aim.ext.cleanup
 import jax.numpy as jnp
 import numpy as np
 import optax
-
-# from rich.pretty import pprint
-# from quizkit.readers import read_hdf5
 from quizkit.configs import SolverConfig
 from quizkit.hologram_experiment import HologramExperiment
-
-# from aim import Run
-
-
 
 # TODO HACK
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)

@@ -32,6 +32,8 @@ dependencies = [
     "aim",
     "streamlit",
     "plotly",
+    "hvplot",
+    "panel"
 ]
 
 [project.optional-dependencies]

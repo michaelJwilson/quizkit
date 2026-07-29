@@ -9,7 +9,8 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from aim import Run
+import matplotlib.pyplot as plt
+from aim import Run, Figure
 from rich.pretty import pprint
 from scipy.ndimage import binary_dilation, find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
@@ -773,6 +774,28 @@ class HologramExperimentSolver:
         logger.info(
             f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
         )
+
+    def update_aim(self, experiment_name: str = "phase_retrieval_sweep"):
+        with Run(experiment=experiment_name) as run:
+            run["hparams"] = {
+                "run": self.exp.run_config.to_dict(),
+                "solver": self.config.to_dict(),
+                "trap": self.exp.run_config.trap_config.to_dict()
+            }
+
+            if hasattr(self.backend, "history"):
+                for step_idx in range(self.config.maxiter):
+                    for metric_name, metric_array in self.backend.history.items():
+                        run.track(
+                            float(metric_array[step_idx]), # ensure standard float
+                            name=metric_name,
+                            step=step_idx,
+                            context={"subset": "Metrics"},
+                        )
+
+            fig = plot_scalar_field(..., return_fig=True)
+            run.track(Figure(fig), name="slm_phase", context={"type": "final_state"})
+            plt.close(fig)
 
     def log_to_aim(self, experiment_name: str = "phase_retrieval_sweep"):
         if self.backend_type != "jax":

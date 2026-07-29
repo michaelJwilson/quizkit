@@ -37,6 +37,7 @@ def plot_scalar_field(
     figsize=(5, 3.2),
     xlabel=None,
     ylabel=None,
+    return_fig=False,
     **imshow_kwargs,
 ):
     fig, ax = plt.subplots(figsize=figsize)
@@ -60,4 +61,8 @@ def plot_scalar_field(
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+
+    if return_fig:
+        return fig
+    else:
+        plt.close(fig)
