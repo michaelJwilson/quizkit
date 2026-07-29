@@ -78,6 +78,8 @@ def plot_stack_with_marginals(
     xlabel=None,
     ylabel=None,
     return_fig=False,
+    fit_x=None,
+    fit_y=None,
     **imshow_kwargs,
 ):
     fig, ax = plt.subplots(figsize=figsize)
@@ -94,17 +96,44 @@ def plot_stack_with_marginals(
     x_axis = np.arange(field.shape[1])
     if extent:
         x_axis = np.linspace(extent[0], extent[1], field.shape[1])
-    ax_top.plot(x_axis, field[cy, :], color="black", linewidth=1.5)
+        
+    # Extract data slices
+    data_x = field[cy, :]
+    data_y = field[:, cx]
+    
+    # Calculate normalization bounds (prevent div by zero)
+    min_x, ptp_x = np.min(data_x), np.ptp(data_x)
+    ptp_x = ptp_x if ptp_x > 0 else 1.0
+    
+    min_y, ptp_y = np.min(data_y), np.ptp(data_y)
+    ptp_y = ptp_y if ptp_y > 0 else 1.0
+    
+    # Normalize X
+    norm_data_x = (data_x - min_x) / ptp_x
+    ax_top.plot(x_axis, norm_data_x, color="black", linewidth=1.5, label="Mean data")
+    
+    if fit_x is not None:
+        norm_fit_x = (fit_x - min_x) / ptp_x
+        ax_top.plot(x_axis, norm_fit_x, color="cyan", alpha=0.5, linestyle="-", linewidth=1.2)
+    
     ax_top.tick_params(axis="x", labelbottom=False)
-    ax_top.set_ylabel(r"$y$ profile")
+    # ax_top.set_ylabel(r"Norm. $y$ profile")
+    ax_top.set_ylim(-0.05, 1.05)  # Lock limits to data range, ignoring fit extremes
 
     y_axis = np.arange(field.shape[0])
     if extent:
         y_axis = np.linspace(extent[2], extent[3], field.shape[0])
-    ax_right.plot(field[:, cx], y_axis, color="black", linewidth=1.5)
+    
+    norm_data_y = (data_y - min_y) / ptp_y
+    ax_right.plot(norm_data_y, y_axis, color="black", linewidth=1.5)
+    
+    if fit_y is not None:
+        norm_fit_y = (fit_y - min_y) / ptp_y
+        ax_right.plot(norm_fit_y, y_axis, color="red", linestyle="--", linewidth=1.2)
+        
     ax_right.tick_params(axis="y", labelleft=False)
-    ax_right.set_xlabel(r"$x$ profile") 
-
+    # ax_right.set_xlabel(r"Norm. $x$ profile") 
+    ax_right.set_xlim(-0.05, 1.05)  # Lock limits to data range, ignoring fit extremes
 
     if title:
         ax_top.set_title(title, fontsize=12)

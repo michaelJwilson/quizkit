@@ -11,8 +11,11 @@ import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
 from aim import Run, Figure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
 from scipy.ndimage import binary_dilation, find_objects, label
+from scipy.optimize import curve_fit
+from scipy.signal import fftconvolve
 from slmsuite.holography.algorithms import SpotHologram
 
 from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs
@@ -160,14 +163,115 @@ def extract_background_artifacts(
     artifacts = artifacts[:max_artifacts]
 
     return artifacts, residual_int
+
+
+def fit_forward_psf(z_data, model="gaussian", fit_background=True):
+    """
+    Fits a 2D intensity stack to a chosen PSF model, returning parameters and 1D marginals.
+    Models support independent (asymmetric) wx and wy.
+    
+    Supported models: 'sinc2', 'gaussian', 'lorentzian', 'moffat'
+    """
+    h, w = z_data.shape
+    cy, cx = h // 2, w // 2
+
+    def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
+        x_val, y_val = coords
+        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+        sinc2_x = np.sinc((x_val - x0) / wx)**2
+        sinc2_y = np.sinc((y_val - y0) / wy)**2
+        return I0 * sinc2_x * sinc2_y + bg
+
+    def gaussian_2d(coords, I0, x0, y0, wx, wy, bg):
+        x_val, y_val = coords
+        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+        r2 = ((x_val - x0) / wx)**2 + ((y_val - y0) / wy)**2
+        return I0 * np.exp(-0.5 * r2) + bg
+
+    def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
+        # Separable 2D Lorentzian (better matches rectangular aperture cross-wings)
+        x_val, y_val = coords
+        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+        lx = 1.0 / (1.0 + ((x_val - x0) / wx)**2)
+        ly = 1.0 / (1.0 + ((y_val - y0) / wy)**2)
+        return I0 * lx * ly + bg
+
+    def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
+        # Elliptical Moffat profile (beta=2.5 is standard for optical turbulence/scattering)
+        x_val, y_val = coords
+        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+        r2 = ((x_val - x0) / wx)**2 + ((y_val - y0) / wy)**2
+        return I0 * (1.0 + r2)**(-2.5) + bg
+
+    models = {
+        "sinc2": sinc2_2d,
+        "gaussian": gaussian_2d,
+        "lorentzian": lorentzian_2d,
+        "moffat": moffat_2d
+    }
+
+    if model not in models:
+        raise ValueError(f"Unknown PSF model '{model}'. Available: {list(models.keys())}")
+        
+    fit_func = models[model]
+
+    core_radius = 10
+    
+    y_slice = slice(max(0, cy - core_radius), min(h, cy + core_radius + 1))
+    x_slice = slice(max(0, cx - core_radius), min(w, cx + core_radius + 1))
+    
+    z_fit = z_data[y_slice, x_slice]
+    
+    y_coords = np.arange(h)[y_slice]
+    x_coords = np.arange(w)[x_slice]
+    X_fit, Y_fit = np.meshgrid(x_coords, y_coords)
+    
+    bg_guess = 0.0
+    I0_guess = max(0.0, np.max(z_fit) - bg_guess)
+    x0_guess, y0_guess = float(cx), float(cy)
+    
+    # NB slm aperture expected to produce a spot with a first-null width of ~1 pixel
+    wx_guess, wy_guess = 1.0, 1.0 
+
+    coords_fit = (X_fit.ravel(), Y_fit.ravel())
+
+    if fit_background:
+        p0 = [I0_guess, x0_guess, y0_guess, wx_guess, wy_guess, bg_guess]
+        popt, _ = curve_fit(fit_func, coords_fit, z_fit.ravel(), p0=p0)
+        I0, x0, y0, wx, wy, bg = popt
+    else:
+        # Wrap the function to hide the 'bg' parameter from the optimizer
+        def fit_func_no_bg(coords, _I0, _x0, _y0, _wx, _wy):
+            return fit_func(coords, _I0, _x0, _y0, _wx, _wy, 0.0)
+            
+        p0 = [I0_guess, x0_guess, y0_guess, wx_guess, wy_guess]
+        popt_5, _ = curve_fit(fit_func_no_bg, coords_fit, z_fit.ravel(), p0=p0)
+        
+        I0, x0, y0, wx, wy = popt_5
+        bg = 0.0
+        # Reconstruct standard 6-parameter tuple for return signature
+        popt = (I0, x0, y0, wx, wy, bg)
+
+    x_line = np.arange(w)
+    y_line = np.arange(h)
+    
+    # Always evaluate marginals cleanly without the background component
+    fit_x_no_bg = fit_func((x_line, np.full_like(x_line, y0)), I0, x0, y0, wx, wy, 0.0)
+    fit_y_no_bg = fit_func((np.full_like(y_line, x0), y_line), I0, x0, y0, wx, wy, 0.0)
+
+    return popt, fit_x_no_bg, fit_y_no_bg
+
+
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
         "trap_uniformity": "Michelson uniformity of integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
+        "efficiency_diffuse_trap": "Fraction of forward power convolved with best-fit trap sinc^2 envelope",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
+        "zeroth_order_fraction": "Fraction of forward power located at the 0th order (convolved w/ sinc^2)",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_med": "Median integrated trap power",
         "trap_mean": "Mean integrated trap power",
@@ -179,9 +283,11 @@ class PerformanceMetrics(ConfigMixin):
 
     trap_uniformity: float
     efficiency: float
+    # efficiency_diffuse_trap: float
     stray_light_fraction: float
     efficiency_perimeter: float
     efficiency_dual: float
+    # zeroth_order_fraction: float
     pearson: float
     trap_med: float
     trap_mean: float
@@ -197,6 +303,7 @@ class PerformanceMetrics(ConfigMixin):
         forward_intensity: np.ndarray,
         target_intensity: np.ndarray,
         trap_labels: jnp.ndarray | np.ndarray,
+        trap_coords: np.ndarray,
         trap_array_perimeter_mask: jnp.ndarray | np.ndarray,
         num_traps: int,
         dual_mask: np.ndarray,
@@ -204,9 +311,10 @@ class PerformanceMetrics(ConfigMixin):
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
         trap_array_perimeter_mask = np.asarray(trap_array_perimeter_mask, dtype=bool)
-
+        
         flat_forward_intensity = ff_int.ravel()
         flat_trap_labels = np.asarray(trap_labels).ravel()
+        total_power = float(np.sum(flat_forward_intensity))
 
         trap_powers_jax = jnp.bincount(
             flat_trap_labels,
@@ -221,7 +329,6 @@ class PerformanceMetrics(ConfigMixin):
         trap_mean = float(np.mean(trap_powers))
         trap_std = float(np.std(trap_powers))
 
-        total_power = float(np.sum(flat_forward_intensity))
         total_trap_perimeter_power = float(np.sum(ff_int[trap_array_perimeter_mask]))
         total_trap_dual_power = float(np.sum(ff_int[dual_mask]))
 
@@ -250,9 +357,11 @@ class PerformanceMetrics(ConfigMixin):
         return cls(
             trap_uniformity=trap_uniformity,
             efficiency=sig_power / total_power,
+            # efficiency_diffuse_trap=efficiency_diffuse_trap,
             stray_light_fraction=bg_power / total_power,
             efficiency_perimeter=efficiency_perimeter,
             efficiency_dual=efficiency_dual,
+            # zeroth_order_fraction=zeroth_order_fraction,
             pearson=pearson,
             trap_med=trap_med,
             trap_mean=trap_mean,
@@ -269,6 +378,7 @@ class PerformanceMetrics(ConfigMixin):
             forward_intensity=solver.forward_intensity,
             target_intensity=solver.target_intensity,
             trap_labels=solver.exp.trap_labels,
+            trap_coords=np.array(solver.exp.trap_coords),
             trap_array_perimeter_mask=solver.exp.trap_array_perimeter_mask,
             num_traps=solver.exp.num_traps,
             dual_mask=solver.exp.dual_mask,
@@ -493,22 +603,31 @@ class HologramExperimentSolver:
         )
 
         # NB forward intensity trap stack
-        forward_stack_mean = reduce_stack_similar_crops(
+        forward_stack_mean = np.asarray(reduce_stack_similar_crops(
             self.forward_intensity,
             self.exp.trap_coords,
             self.stack_h,
             self.stack_w,
             reducer=jnp.mean,
-        )
+        ))
+        
+
+        # TODO
+        _, fit_x, fit_y = fit_forward_psf(forward_stack_mean, model="gaussian", fit_background=False)
+
+        # NB
+        # LATEST_RUN=$(ls -td results/run_* | head -n 1) && LATEST_SOLVER=$(ls -td "$LATEST_RUN"/phase_retrieval/*/ | head -n 1) && echo "${LATEST_SOLVER}plots/trap_stack_forward_intensity.pdf" 
 
         plot_stack_with_marginals(
             plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
             field=np.log(forward_stack_mean + 1e-12),
             cmap="inferno",
             title="forward trap stack: mean",
-            cbar_label="ln. ntensity [a.u.]",
+            cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
+            fit_x=np.log(fit_x + 1e-12),
+            fit_y=np.log(fit_y + 1e-12)
         )
 
         # NB forward intensity trap stack std. dev.
@@ -699,7 +818,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                solver.update_aim(experiment_name=solver_config.hash)
+                # solver.update_aim(experiment_name=solver_config.hash)
 
     logger.info(f"Done.")
 
