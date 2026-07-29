@@ -4,7 +4,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import jax
 import jax.numpy as jnp
@@ -708,6 +708,23 @@ class PerformanceMetrics(ConfigMixin):
 """
 @dataclass
 class PerformanceMetrics(ConfigMixin):
+    # Define descriptions as a class variable so it belongs to the class, not instances.
+    _DESCRIPTIONS: ClassVar[dict[str, str]] = {
+        "efficiency": "Fraction of total power within target trap regions",
+        "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
+        "array_efficiency": "Fraction of total power within the trap array region",
+        "interference_efficiency": "Fraction of array power within the reciprocal array",
+        "pearson": "Pearson correlation of forward intensity and target intensity",
+        "trap_cv": "Coefficient of variation of integrated trap powers",
+        "trap_mean": "Mean integrated trap power",
+        "trap_min": "Minimum integrated trap power",
+        "trap_max": "Maximum integrated trap power",
+        "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
+        "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
+        "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
+        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity",
+    }
+
     efficiency: float
     stray_light_fraction: float
     array_efficiency: float
@@ -805,70 +822,68 @@ class PerformanceMetrics(ConfigMixin):
             reciprocal_mask=solver.exp.reciprocal_mask,
         )
 
-# TODO merge with PerformanceMetrics, which should own description strings and formatting.
-def write_performance_metrics_tex(
-    filepath: str | Path,
-    metrics_by_run: dict[str, dict],
-    caption: str = "Computed performance metrics for the optimized SLM phase.",
-    label: str = "tab:hologram_metrics",
-) -> None:
-    descriptions = {
-        "efficiency": "Fraction of total power within target trap regions",
-        "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
-        "array_efficiency": "Fraction of total power within the trap array region",
-        "interference_efficiency": "Fraction of array power within the reciprocal array",
-        "pearson": "Pearson correlation of forward intensity and target intensity",
-        "trap_cv": "Coefficient of variation of integrated trap powers",
-        "trap_mean": "Mean integrated trap power",
-        "trap_min": "Minimum integrated trap power",
-        "trap_max": "Maximum integrated trap power",
-        "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
-        "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
-        "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
-        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity",
-    }
+    @classmethod
+    def write_tex_table(
+        cls,
+        filepath: str | Path,
+        metrics_by_run: dict[str, dict],
+        caption: str = "Computed performance metrics for the optimized SLM phase.",
+        label: str = "tab:hologram_metrics",
+    ) -> None:
+        """
+        Generates and writes a LaTeX table comparing performance metrics across solver runs.
 
-    run_keys = list(metrics_by_run.keys())
-    n_runs = len(run_keys)
+        Args:
+            filepath: The destination path for the .tex file.
+            metrics_by_run: Dictionary mapping run names to their metric dictionaries.
+                            e.g., {"gs": dict, "wgs": dict}.
+            caption: Table caption string.
+            label: Table LaTeX label.
+        """
+        run_keys = list(metrics_by_run.keys())
+        if not run_keys:
+            logger.warning("No metrics provided to write_tex_table.")
+            return
 
-    # 1. Determine Column Headers and Tabular Alignment
-    # Always use the provided key(s), capitalized
-    headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+        n_runs = len(run_keys)
 
-    c_cols = "c" * n_runs
-    tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
+        # 1. Determine Column Headers and Tabular Alignment
+        headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+        c_cols = "c" * n_runs
+        tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
 
-    # 2. Build Header Row
-    header_row = (
-        " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
-        + " \\\\"
-    )
+        # 2. Build Header Row
+        header_row = (
+            " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
+            + " \\\\"
+        )
 
-    # 3. Build Data Rows
-    # Grab the metric names from the first run (excluding the raw array)
-    metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
+        # 3. Build Data Rows
+        # Grab the metric names from the first run (excluding the raw array)
+        metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
 
-    rows = []
-    for m_name in metric_names:
-        escaped_m_name = m_name.replace("_", "\\_")
-        row_parts = [f"\\texttt{{{escaped_m_name}}}"]
+        rows = []
+        for m_name in metric_names:
+            escaped_m_name = m_name.replace("_", "\\_")
+            row_parts = [f"\\texttt{{{escaped_m_name}}}"]
 
-        for key in run_keys:
-            val = metrics_by_run[key].get(m_name, np.nan)
+            for key in run_keys:
+                val = metrics_by_run[key].get(m_name, np.nan)
 
-            if isinstance(val, float) and not np.isnan(val):
-                if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
-                    row_parts.append(f"{val:.2e}")
+                if isinstance(val, float) and not np.isnan(val):
+                    if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
+                        row_parts.append(f"{val:.2e}")
+                    else:
+                        row_parts.append(f"{val:.4f}")
                 else:
-                    row_parts.append(f"{val:.4f}")
-            else:
-                row_parts.append(str(val))
+                    row_parts.append(str(val))
 
-        desc = descriptions.get(m_name, "")
-        row_parts.append(desc)
-        rows.append(" & ".join(row_parts) + " \\\\")
+            # Fetch description from the class variable
+            desc = cls._DESCRIPTIONS.get(m_name, "")
+            row_parts.append(desc)
+            rows.append(" & ".join(row_parts) + " \\\\")
 
-    latex = f"""\\begin{{table}}[htbp]
+        latex = f"""\\begin{{table}}[htbp]
 \\centering
 \\small
 {tabular_def}
@@ -882,13 +897,13 @@ def write_performance_metrics_tex(
 \\label{{{label}}}
 \\end{{table}}"""
 
-    out_path = Path(filepath)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path = Path(filepath)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Writing {out_path}.")
+        logger.info(f"Writing {out_path}.")
 
-    with open(out_path, "w") as f:
-        f.write(latex)
+        with open(out_path, "w") as f:
+            f.write(latex)
 
 
 class HologramExperimentSolver:
@@ -1194,7 +1209,7 @@ def run_phase_retrieval():
 
                 pprint(metrics, expand_all=True)
 
-                write_performance_metrics_tex(
+                PerformanceMetrics.write_tex_table(
                     filepath=exp._get_run_dir("./results")
                     / f"phase_retrieval/{solver.config.hash}"
                     / "performance_metrics.tex",
