@@ -90,7 +90,7 @@ def extract_background_artifacts(forward_intensity, trap_labels, exclusion_mask=
     artifacts.sort(key=lambda x: x["power"], reverse=True)
     return artifacts[:max_artifacts], residual_int
 
-@st.cache_data
+@st.cache_resource
 def load_data(base_dir: str, r_hash: str, s_hash: str):
     run_dir = Path(base_dir) / f"run_{r_hash}"
     solver_dir = run_dir / "phase_retrieval" / s_hash
@@ -177,9 +177,9 @@ with col_left:
     with col_toggles1:
         use_log_scale = st.checkbox("Log Scale Intensity", value=True)
     with col_toggles2:
-        show_fuzz = st.checkbox("Include Array Fuzz (Inside Perimeter)", value=True)
+        exclude_fuzz = st.checkbox("Exclude interference artefacts", value=False)
 
-    active_df = df.copy() if show_fuzz else df[~df["is_fuzz"]].copy()
+    active_df = df[~df["is_fuzz"]].copy() if exclude_fuzz else df.copy()
     map_container = st.container()
 
 if active_df.empty:
@@ -284,11 +284,6 @@ with col_right:
             fig_stack = px.imshow(stack_plot, color_continuous_scale="viridis")
             cy_s, cx_s = current_stack.shape[0] // 2, current_stack.shape[1] // 2
             
-            fig_stack.add_scatter(
-                x=[cx_s], y=[cy_s], mode="markers",
-                marker=dict(color="white", size=15, symbol="cross", opacity=0.6),
-                hoverinfo="skip", showlegend=False
-            )
             fig_stack.update_layout(margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False, xaxis_visible=False, yaxis_visible=False)
             st.plotly_chart(fig_stack, use_container_width=True)
     else:
