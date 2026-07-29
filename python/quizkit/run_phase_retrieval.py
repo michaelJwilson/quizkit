@@ -192,6 +192,13 @@ def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
     r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
     return I0 * (1.0 + r2) ** (-2.5) + bg
 
+psf_models = {
+    "sinc2": sinc2_2d,
+    "gaussian": gaussian_2d,
+    "lorentzian": lorentzian_2d,
+    "moffat": moffat_2d,
+}
+
 def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     """
     Fits a 2D intensity stack to a chosen PSF model, returning parameters and 1D marginals.
@@ -202,19 +209,12 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     h, w = z_data.shape
     cy, cx = h // 2, w // 2
 
-    models = {
-        "sinc2": sinc2_2d,
-        "gaussian": gaussian_2d,
-        "lorentzian": lorentzian_2d,
-        "moffat": moffat_2d,
-    }
-
-    if model not in models:
+    if model not in psf_models:
         raise ValueError(
-            f"Unknown PSF model '{model}'. Available: {list(models.keys())}"
+            f"Unknown PSF model '{model}'. Available: {list(psf_models.keys())}"
         )
 
-    fit_func = models[model]
+    fit_func = psf_models[model]
 
     core_radius = 10
 
@@ -263,16 +263,68 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     return popt, fit_x_no_bg, fit_y_no_bg
 
 
+def calculate_diffuse_efficiencies(
+    forward_intensity: np.ndarray,
+    target: np.ndarray,
+    psf_model: str,
+    psf_params: tuple,
+    array_center: tuple[int, int] | None = None,
+) -> tuple[float, float]:
+    if psf_model not in psf_models:
+        raise ValueError(f"Unknown PSF model '{psf_model}'. Available: {list(psf_models.keys())}")
+        
+    fit_func = psf_models[psf_model]
+    
+    _, _, _, wx, wy, _ = psf_params
+    
+    h, w = forward_intensity.shape
+    total_power = float(np.sum(forward_intensity))
+    
+    # -------------------------------------------------------------------------
+    # 1. Diffuse Trap Efficiency (efficiency_diffuse)
+    # -------------------------------------------------------------------------
+    # TODO
+    stack_h, stack_w = 50, 50
+    ky, kx = np.arange(-stack_h // 2, stack_h // 2), np.arange(-stack_w // 2, stack_w // 2)
+    X, Y = np.meshgrid(kx, ky)
+    
+    psf_kernel = fit_func((X, Y), 1.0, 0.0, 0.0, wx, wy, 0.0)
+    
+    diffuse_target = fftconvolve(target, psf_kernel, mode='same')
+    
+    # TODO
+    diffuse_target = np.clip(diffuse_target, 0.0, 1.0)
+    
+    efficiency_diffuse = float(np.sum(forward_intensity * diffuse_target) / (total_power + 1e-12))
+    
+    # -------------------------------------------------------------------------
+    # 2. 0th Order PSF Efficiency
+    # -------------------------------------------------------------------------
+    # Generate a peak-normalized envelope perfectly centered in the far field
+    if array_center is not None:
+        cy, cx = array_center
+    else:
+        cy, cx = h // 2, w // 2
+
+    Y_full, X_full = np.ogrid[:h, :w]
+    
+    zeroth_mask = fit_func((X_full, Y_full), 1.0, cx, cy, wx, wy, 0.0)
+    
+    efficiency_zeroth = float(np.sum(forward_intensity * zeroth_mask) / (total_power + 1e-12))
+    
+    return efficiency_diffuse, efficiency_zeroth
+
+
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
         "trap_uniformity": "Michelson uniformity of integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
-        "efficiency_diffuse_trap": "Fraction of forward power convolved with best-fit trap sinc^2 envelope",
+        "efficiency_diffuse": "Fraction of forward power convolved with best-fit trap sinc^2 envelope",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
-        "zeroth_order_fraction": "Fraction of forward power located at the 0th order (convolved w/ sinc^2)",
+        "efficiency_zeroth": "Fraction of forward power located at the (diffuse) zeroth order",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_med": "Median integrated trap power",
         "trap_mean": "Mean integrated trap power",
@@ -284,11 +336,11 @@ class PerformanceMetrics(ConfigMixin):
 
     trap_uniformity: float
     efficiency: float
-    # efficiency_diffuse_trap: float
+    efficiency_diffuse: float
     stray_light_fraction: float
     efficiency_perimeter: float
     efficiency_dual: float
-    # zeroth_order_fraction: float
+    efficiency_zeroth: float
     pearson: float
     trap_med: float
     trap_mean: float
@@ -308,6 +360,9 @@ class PerformanceMetrics(ConfigMixin):
         trap_array_perimeter_mask: jnp.ndarray | np.ndarray,
         num_traps: int,
         dual_mask: np.ndarray,
+        psf_model: str | None = None,
+        psf_params: tuple | None = None,
+        array_center: tuple[int, int] | None = None,
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
@@ -355,14 +410,22 @@ class PerformanceMetrics(ConfigMixin):
         trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
+        efficiency_diffuse, efficiency_zeroth = calculate_diffuse_efficiencies(
+            forward_intensity=ff_int,
+            target=target_int,
+            psf_model=psf_model,
+            psf_params=psf_params,
+            array_center=array_center,
+        )
+
         return cls(
             trap_uniformity=trap_uniformity,
             efficiency=sig_power / total_power,
-            # efficiency_diffuse_trap=efficiency_diffuse_trap,
+            efficiency_diffuse=efficiency_diffuse,
+            efficiency_zeroth=efficiency_zeroth,
             stray_light_fraction=bg_power / total_power,
             efficiency_perimeter=efficiency_perimeter,
             efficiency_dual=efficiency_dual,
-            # zeroth_order_fraction=zeroth_order_fraction,
             pearson=pearson,
             trap_med=trap_med,
             trap_mean=trap_mean,
@@ -383,8 +446,11 @@ class PerformanceMetrics(ConfigMixin):
             trap_array_perimeter_mask=solver.exp.trap_array_perimeter_mask,
             num_traps=solver.exp.num_traps,
             dual_mask=solver.exp.dual_mask,
+            psf_model=solver.forward_psf_model,
+            psf_params=solver.forward_psf_model_params,
+            array_center=solver.exp.run_config.array_center,
         )
-
+    
     @classmethod
     def write_tex_table(
         cls,
@@ -512,7 +578,7 @@ class HologramExperimentSolver:
             f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
         )
 
-         forward_stack_mean = np.asarray(
+        forward_stack_mean = np.asarray(
             reduce_stack_similar_crops(
                 self.forward_intensity,
                 self.exp.trap_coords,
@@ -647,8 +713,8 @@ class HologramExperimentSolver:
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
-            fit_x=np.log(fit_x + 1e-12),
-            fit_y=np.log(fit_y + 1e-12),
+            fit_x=np.log(self.forward_psf_xprofile + 1e-12),
+            fit_y=np.log(self.forward_psf_yprofile + 1e-12),
         )
 
         # NB forward intensity trap stack std. dev.
