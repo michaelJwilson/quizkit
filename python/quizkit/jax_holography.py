@@ -6,14 +6,14 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 import optax
-from aim import Run
+# from aim import Run
 
-from rich.pretty import pprint
-from quizkit.readers import read_hdf5
+# from rich.pretty import pprint
+# from quizkit.readers import read_hdf5
+from quizkit.configs import SolverConfig
 from quizkit.takehome import (
-    plot_phase_retrieval_results,
-    get_trap_zoom,
-    SolverConfig,
+    # plot_phase_retrieval_results,
+    # get_trap_zoom,
     HologramExperiment,
 )
 
@@ -111,7 +111,7 @@ class JaxHologramBackend:
 
     # TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
     def __run_gs(self):
-        logger.info(f"Solving for Gerchberg-Saxton with {config.maxiter} iterations.")
+        logger.info(f"Solving for Gerchberg-Saxton with {self.config.maxiter} iterations.")
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)

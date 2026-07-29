@@ -18,8 +18,12 @@ from rich.pretty import pprint
 from scipy.ndimage import find_objects, label, binary_dilation
 from slmsuite.holography.algorithms import SpotHologram
 from pathlib import Path
-from functools import cached_property
+# from functools import cached_property
+from quizkit.plotting import plot_scalar_field
 from quizkit.writers import write_hdf5
+from quizkit.configs import TrapConfig, TrapConfigs, RunConfig, SolverConfig, ConfigMixin
+from quizkit.hologram_experiment import HologramExperiment, get_trap_zoom, encode_target_traps
+from quizkit.jax_holography import JaxHologramBackend
 from aim import Run
 
 import atexit
@@ -39,7 +43,6 @@ random.seed(42)
 np.random.seed(42)
 
 start_time = time.time()
-
 
 class RuntimeFormatter(logging.Formatter):
     def format(self, record):
@@ -70,20 +73,7 @@ logger.addHandler(stream_handler)
 
 logger = logging.getLogger(__name__)
 
-
-def get_gaussian_slm_illumination(slm_shape):
-    # NB construct source amplitude profile
-    x = np.arange(slm_shape[1]) - (slm_shape[1] - 1) / 2
-    y = np.arange(slm_shape[0]) - (slm_shape[0] - 1) / 2
-
-    xx, yy = np.meshgrid(x, y)
-
-    # TODO HARDCODE
-    beam_waist_px = 0.35 * min(slm_shape)  # 1/e^2 amplitude radius, in pixels
-
-    return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
-
-
+"""
 def _add_colorbar(ax, im, label=None):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -125,7 +115,7 @@ def plot_scalar_field(
     fig.tight_layout()
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-
+"""
 
 def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
@@ -244,7 +234,7 @@ def write_performance_metrics_tex(
     with open(out_path, "w") as f:
         f.write(latex)
 
-
+"""
 def get_trap_zoom(target_intensity, pad=25):
     trap_coords = np.argwhere(target_intensity > 0)
 
@@ -259,8 +249,8 @@ def get_trap_zoom(target_intensity, pad=25):
     x_max = min(target_intensity.shape[1] - 1, x_max + pad)
 
     return (x_min, x_max, y_min, y_max)
-
-
+"""
+"""
 def encode_target_traps(target_intensity, threshold_frac=0.0):
     threshold = threshold_frac * target_intensity.max()
     binary_target = target_intensity > threshold
@@ -281,7 +271,7 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
         coords.append((center_y, center_x))
 
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
-
+"""
 
 def reduce_stack_similar_crops(
     forward_intensity,
@@ -399,7 +389,7 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
 
     return trap_array_mask
 
-
+"""
 class ConfigMixin:
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -488,8 +478,8 @@ class SolverConfig(ConfigMixin):
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
-
-
+"""
+"""
 class HologramExperiment:
     _is_frozen = False
 
@@ -666,7 +656,7 @@ class HologramExperiment:
             group_name="trap_array_mask",
             dataset_name="trap_array_mask",
         )
-
+"""
 
 @dataclass
 class PerformanceMetrics(ConfigMixin):
@@ -780,8 +770,7 @@ class HologramExperimentSolver:
             # assert np.allclose(self.exp.target, self.__hologram.target)
 
         elif self.backend_type == "jax":
-            # self.backend = JaxHologramBackend(self.exp, self.config)
-            raise NotImplementedError()
+            self.backend = JaxHologramBackend(self.exp, self.config)
         else:
             raise ValueError(f"Unknown backend: {self.backend_type}")
 
@@ -975,7 +964,7 @@ class HologramExperimentSolver:
         )
 
 
-def run_slmsuit_phase_retrieval():
+def run_phase_retrieval():
     slm_shape = (1200, 1920)  # (height, width) in pixels,
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
@@ -1001,7 +990,7 @@ def run_slmsuit_phase_retrieval():
     solver_config = SolverConfig(
         method="GS",
         maxiter=200,
-        solver_backend="slm_suite",
+        solver_backend="jax", # {"slm_suite", "jax"}
     )
 
     pprint(run_config, expand_all=True)
