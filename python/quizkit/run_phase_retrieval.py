@@ -922,7 +922,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                solver.update_aim(experiment_name=solver_config.hash)
+                # solver.update_aim(experiment_name=solver_config.hash)
 
     logger.info(f"Done.")
 

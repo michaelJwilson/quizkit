@@ -55,10 +55,12 @@ def compute_step_metrics_jax(
     trap_powers = jnp.bincount(
         flat_labels, weights=flat_intensity, length=num_traps + 1
     )[1:]
-    trap_mean = jnp.mean(trap_powers)
+    
     trap_min = jnp.min(trap_powers)
     trap_max = jnp.max(trap_powers)
-    trap_cv = jnp.std(trap_powers) / (trap_mean + 1e-12)
+    trap_med = jnp.median(trap_powers)
+    trap_mean = jnp.mean(trap_powers)
+    trap_std = jnp.std(trap_powers)
 
     total_power = jnp.sum(flat_intensity)
     sig_power = jnp.sum(trap_powers)
@@ -74,13 +76,25 @@ def compute_step_metrics_jax(
         jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2)) + 1e-12
     )
 
+    uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
+    
+    trap_ps = trap_powers / (sig_power + 1e-12)
+    entropy = -jnp.sum(trap_ps * jnp.log(trap_ps + 1e-12)) / jnp.log(num_traps + 1e-12)
+
+    ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
+
     return {
+        "uniformity": uniformity,
+        "entropy": entropy,
         "efficiency": sig_power / total_power,
         "stray_light_fraction": bg_power / total_power,
         "pearson": pearson,
-        "trap_cv": trap_cv,
-        "trap_uniformity": 1.0
-        - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+        "trap_med": trap_med,
+        "trap_mean": trap_mean,
+        "trap_std": trap_std,
+        "trap_min": trap_min,
+        "trap_max": trap_max,
+        "ghost_to_trap_med_ratio": ghost_to_trap_med_ratio,
     }
 
 

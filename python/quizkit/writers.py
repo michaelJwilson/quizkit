@@ -12,7 +12,7 @@ def write_hdf5(
     group_name,
     dataset_name,
     compression="gzip",
-    overwrite=False,
+    overwrite=True,
     **metadata,
 ):
     try:

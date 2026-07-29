@@ -105,7 +105,7 @@ class SolverConfig(ConfigMixin):
     solver_runtime: float | None = None
 
     smooth_phase: bool = False
-    smooth_sigma: int = 3  # pixels
+    smooth_sigma: int = 2  # pixels
 
     loss_norm: str = "L2"  # {"L1", "L2"}
     learning_rate: float = 0.1
