@@ -792,6 +792,7 @@ class PerformanceMetrics(ConfigMixin):
 class PerformanceMetrics(ConfigMixin):
     efficiency: float
     stray_light_fraction: float
+    array_efficiency: float
     interference_efficiency: float
     pearson: float
     trap_cv: float
@@ -810,11 +811,13 @@ class PerformanceMetrics(ConfigMixin):
         forward_intensity: np.ndarray,
         target_intensity: np.ndarray,
         trap_labels: jnp.ndarray | np.ndarray,
+        trap_array_mask: jnp.ndarray | np.ndarray,
         num_traps: int,
         reciprocal_mask: np.ndarray,
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
+        trap_array_mask = np.asarray(trap_array_mask, dtype=bool)
 
         flat_forward_intensity = ff_int.ravel()
         flat_trap_labels = np.asarray(trap_labels).ravel()
@@ -834,8 +837,12 @@ class PerformanceMetrics(ConfigMixin):
         trap_cv = float(trap_std / (trap_mean + 1e-12))
 
         total_power = float(np.sum(flat_forward_intensity))
+        total_trap_array_power = float(np.sum(ff_int[trap_array_mask]))
+
         sig_power = float(np.sum(trap_powers))
         bg_power = total_power - sig_power
+
+        array_efficiency = total_trap_array_power / (total_trap_array_power + 1e-12)
 
         reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
         interference_efficiency = reciprocal_power / (total_power + 1e-12)
@@ -854,6 +861,7 @@ class PerformanceMetrics(ConfigMixin):
         return cls(
             efficiency=sig_power / total_power,
             stray_light_fraction=bg_power / total_power,
+            array_efficiency=array_efficiency,
             interference_efficiency=interference_efficiency,
             pearson=pearson,
             trap_cv=trap_cv,
@@ -873,6 +881,7 @@ class PerformanceMetrics(ConfigMixin):
         return cls.compute(
             forward_intensity=solver.forward_intensity,
             target_intensity=solver.target_intensity,
+            trap_array_mask=solver.exp.trap_array_mask,
             trap_labels=solver.exp.trap_labels,
             num_traps=solver.exp.num_traps,
             reciprocal_mask=solver.exp.reciprocal_mask,
@@ -935,23 +944,27 @@ class HologramExperimentSolver:
             f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
         )
 
-    def update_aim(self, experiment_name: str = "phase_retrieval_sweep"):
+    def update_aim(self, experiment_name: str):
         with Run(experiment=experiment_name) as run:
             run["hparams"] = {
+                "trap": self.exp.run_config.trap_config.to_dict(),
                 "run": self.exp.run_config.to_dict(),
                 "solver": self.config.to_dict(),
-                "trap": self.exp.run_config.trap_config.to_dict(),
             }
 
             if hasattr(self.backend, "history"):
                 for step_idx in range(self.config.maxiter):
                     for metric_name, metric_array in self.backend.history.items():
                         run.track(
-                            float(metric_array[step_idx]),  # ensure standard float
+                            float(metric_array[step_idx]),
                             name=metric_name,
                             step=step_idx,
                             context={"subset": "Metrics"},
                         )
+            else:
+                logger.warning(
+                    "Backend does not support history attribute. Skipping aim metric tracking."
+                )
 
             # TODO
             # fig = plot_scalar_field(..., return_fig=True)
