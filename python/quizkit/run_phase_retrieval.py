@@ -987,7 +987,6 @@ def run_phase_retrieval():
             pixel_pitch=8.0e-6,
             slm_shape=slm_shape,
             trap_config=trap_config,
-            comment="default slm suite run",
         )
 
         pprint(run_config, expand_all=True)

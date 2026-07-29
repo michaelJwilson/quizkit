@@ -6,10 +6,30 @@ import polars as pl
 import hvplot
 import hvplot.polars
 
+import panel as pn
+
+# NB inject modern web fonts and smooth card styling
+custom_css = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+body, .bk, .bk-root, .panel-title {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Remove harsh borders and add subtle floating shadows to cards */
+.bk-panel-models-layout-Card {
+    border: 1px solid #374151 !important; /* Tailwind Gray 700 */
+    border-radius: 8px !important;
+    background-color: #1F2937 !important; /* Tailwind Gray 800 */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
 """
-panel serve python/quizkit/runs_dashboard.py --show
+
+pn.extension('tabulator', raw_css=[custom_css], sizing_mode="stretch_width")
+
 """
-pn.extension(sizing_mode="stretch_width")
+panel serve python/quizkit/run_dashboard.py --show
+"""
 
 
 def load_data(results_dir: str = "./results") -> pl.DataFrame:
@@ -186,20 +206,30 @@ else:
     @pn.depends(w_x_axis, w_y_axis, w_color_by, w_trap_filter, w_method_filter)
     def plot_scatter(x, y, color_col, traps, methods):
         filtered = get_filtered_df(traps, methods)
-        if filtered.is_empty():
-            return "No data."
-
-        # responsive=True allows it to fill the Card perfectly
+        if filtered.is_empty(): return pn.pane.Markdown("No data.")
+        
         return filtered.hvplot.scatter(
-            x=x,
-            y=y,
-            by=color_col,
-            size=150,
-            alpha=0.8,
-            hover_cols=["hash", "random_seed"],
-            grid=True,
-            responsive=True,
-            min_height=350,
+            x=x, y=y, by=color_col, 
+            size=150, alpha=0.85, 
+            hover_cols=["hash", "random_seed"], 
+            cmap="Category10",           # Modern categorical colors
+            line_color="white",          # White borders on scatter points
+            line_width=0.5,
+            grid=False,                  # Remove grid for a cleaner look
+            responsive=True, min_height=350
+        )
+
+    @pn.depends(w_x_axis, w_color_by, w_trap_filter, w_method_filter)
+    def plot_histogram(x, color_col, traps, methods):
+        filtered = get_filtered_df(traps, methods)
+        if filtered.is_empty(): return pn.pane.Markdown("No data.")
+            
+        return filtered.hvplot.hist(
+            y=x, by=color_col, 
+            alpha=0.7, bins=30, 
+            cmap="Category10", 
+            line_width=0,                # Remove bin borders
+            responsive=True, min_height=350
         )
 
     @pn.depends(w_x_axis, w_color_by, w_trap_filter, w_method_filter)
@@ -250,14 +280,28 @@ else:
         pn.Card(filtered_table, title="Run Data", sizing_mode="stretch_width"),
     )
 
-    # Add accent colors for a polished look
+    scatter_card = pn.Card(plot_scatter, title="Metric Scatter Plot", margin=10, sizing_mode="stretch_both")
+    hist_card = pn.Card(plot_histogram, title="1D Distribution", margin=10, sizing_mode="stretch_both")
+    table_card = pn.Card(filtered_table, title="Run Data", margin=10, sizing_mode="stretch_width")
+
+    main_content = pn.Column(
+        kpi_indicators,
+        pn.Row(scatter_card, hist_card, min_height=420, sizing_mode="stretch_width"),
+        table_card
+    )
+
     template = pn.template.FastListTemplate(
-        title="Quizkit: phase retrieval",
+        title="Quizkit::phase retrieval",
         sidebar=[sidebar],
         main=[main_content],
         theme="dark",
-        accent_base_color="#0072B5",  # A professional scientific blue
-        header_background="#0072B5",
+        font="Inter",
+        # Modern Dark Slate Theme (Tailwind Inspired)
+        background_color="#111827",      # Deep gray background (not pure black)
+        header_background="#1F2937",     # Lighter gray for the header
+        accent_base_color="#8B5CF6",     # Vibrant violet accent for sliders/toggles
+        header_color="#F9FAFB",          # Off-white header text
+        sidebar_width=320,
     )
 
     template.servable()
