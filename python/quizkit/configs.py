@@ -80,12 +80,12 @@ class RunConfig(ConfigMixin):
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
 
-    hash: str = field(init=False)
+    hash: Optional[str] = None
 
     def __post_init__(self):
         # TODO !!! remove before flight
-        self.hash = ""
-        self.hash = self._generate_param_hash()
+        if not self.hash:
+            self.hash = self._generate_param_hash()
 
     def __getattr__(self, name):
         try:
@@ -123,9 +123,9 @@ class SolverConfig(ConfigMixin):
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
 
-    hash: str = field(init=False)
+    hash: Optional[str] = None
 
     def __post_init__(self):
         # TODO !!! remove before flight
-        self.hash = ""
-        self.hash = self._generate_param_hash()
+        if not self.hash:
+            self.hash = self._generate_param_hash()
