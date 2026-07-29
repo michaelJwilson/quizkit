@@ -4,6 +4,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
+import numpy as np
 import optax
 from aim import Run
 
@@ -13,7 +14,7 @@ from quizkit.takehome import (
     plot_phase_retrieval_results,
     get_trap_zoom,
     SolverConfig,
-    PerformanceMetrics,
+    HologramExperiment,
 )
 
 import atexit
@@ -51,207 +52,198 @@ def smooth_phase_regularization(phase):
     return jnp.mean(penalty_x) + jnp.mean(penalty_y)
 
 
-# DEPRECATE
-def compute_performance_metrics(ff_int, target_int):
-    ff_int = jnp.asarray(ff_int)
-    target_int = jnp.asarray(target_int)
+# TODO
+def compute_step_metrics_jax(inferred_intensity, target_intensity, trap_labels, num_traps):
+    flat_intensity = inferred_intensity.ravel()
+    flat_labels = trap_labels.ravel()
 
-    signal_mask = target_int > 0.0
-    bg_mask = ~signal_mask
+    trap_powers = jnp.bincount(flat_labels, weights=flat_intensity, length=num_traps + 1)[1:]
+    trap_mean = jnp.mean(trap_powers)
+    trap_min = jnp.min(trap_powers)
+    trap_max = jnp.max(trap_powers)
+    trap_cv = jnp.std(trap_powers) / (trap_mean + 1e-12)
 
-    signal_vals = jnp.where(signal_mask, ff_int, 0.0)
-    bg_vals = jnp.where(bg_mask, ff_int, 0.0)
+    total_power = jnp.sum(flat_intensity)
+    sig_power = jnp.sum(trap_powers)
+    bg_power = total_power - sig_power
 
-    total_power = jnp.sum(ff_int)
-    signal_power = jnp.sum(signal_vals)
-    bg_power = jnp.sum(bg_vals)
+    bg_mask = (flat_labels == 0)
+    bg_intensities = jnp.where(bg_mask, flat_intensity, 0.0)
+    max_bg = jnp.max(bg_intensities)
 
-    efficiency = signal_power / (total_power + 1e-12)
-    stray_light_fraction = bg_power / (total_power + 1e-12)
-
-    signal_vals_nan = jnp.where(signal_mask, ff_int, jnp.nan)
-
-    sig_min = jnp.nanmin(signal_vals_nan)
-    sig_max = jnp.nanmax(signal_vals_nan)
-
-    sig_constrast = sig_max / (sig_min + 1e-12)
-    uniformity = 1.0 - ((sig_max - sig_min) / (sig_max + sig_min + 1e-12))
-
-    max_bg_intensity = jnp.max(bg_vals)
-    ghost_trap_ratio = max_bg_intensity / (sig_max + 1e-12)
-
-    ff_centered = ff_int - jnp.mean(ff_int)
-    target_centered = target_int - jnp.mean(target_int)
-
-    numerator = jnp.sum(ff_centered * target_centered)
-    denominator = jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2))
-
-    pearson = numerator / (denominator + 1e-12)
+    ff_centered = flat_intensity - jnp.mean(flat_intensity)
+    target_centered = target_intensity.ravel() - jnp.mean(target_intensity)
+    pearson = jnp.sum(ff_centered * target_centered) / (jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2)) + 1e-12)
 
     return {
-        "efficiency": efficiency,
-        "stray_light_fraction": stray_light_fraction,
-        "sig_constrast": sig_constrast,
-        "uniformity": uniformity,
-        "ghost_trap_ratio": ghost_trap_ratio,
+        "efficiency": sig_power / total_power,
+        "stray_light_fraction": bg_power / total_power,
         "pearson": pearson,
+        "trap_cv": trap_cv,
+        "trap_uniformity_minmax": 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+        "ghost_to_dimmest_ratio": max_bg / (trap_min + 1e-12),
     }
 
-# TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
-def run_gs(source_amp, target_amp, initial_phase, config: SolverConfig):
-    logger.info(f"Solving for Gerchberg-Saxton with {config.maxiter} iterations.")
+class JaxHologramBackend:
+    def __init__(self, experiment: HologramExperiment, config: SolverConfig):
+        self.exp = experiment
+        self.config = config
 
-    source_amp_native = jnp.fft.ifftshift(source_amp)
-    target_amp_native = jnp.fft.ifftshift(target_amp)
-    initial_phase_native = jnp.fft.ifftshift(initial_phase)
+        self.source_amp = jnp.array(self.exp.slm_illumination)
+        self.target_amp = jnp.sqrt(jnp.array(self.exp.target_intensity))
+        self.trap_labels = jnp.array(self.exp.trap_labels)
+        self.num_traps = self.exp.num_traps
 
-    slm_shape = source_amp.shape
-    blur_otf = get_gaussian_blur_otf(slm_shape, config.smooth_sigma)
+        rng = np.random.default_rng(self.config.random_seed)
+        self.initial_phase = jnp.array(rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape))
 
-    def gs_step(phase, _):
-        complex_nf = source_amp_native * jnp.exp(1j * phase)
-        complex_ff = propagate_ff_native(complex_nf)
+        self.final_phase = None
+        self.final_intensity = None
+        self.history = {}
 
-        ff_phase = jnp.angle(complex_ff)
-        constrained_ff = target_amp_native * jnp.exp(1j * ff_phase)
-
-        complex_nf_new = propagate_nf_native(constrained_ff)
-        new_phase = jnp.angle(complex_nf_new)
-
-        if config.smooth_phase:
-            complex_phase = jnp.exp(1j * new_phase)
-            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
-            new_phase = jnp.angle(blurred_complex)
-
-        inferred_intensity = jnp.abs(complex_ff) ** 2
-        metrics = compute_performance_metrics(inferred_intensity, target_amp_native**2)
-
-        return new_phase, metrics
-
-    final_phase_native, history = jax.lax.scan(
-        gs_step, initial_phase_native, jnp.arange(config.maxiter)
-    )
-
-    final_complex_ff_native = propagate_ff_native(
-        source_amp_native * jnp.exp(1j * final_phase_native)
-    )
-    final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
-
-    final_phase = jnp.fft.fftshift(final_phase_native)
-    final_intensity = jnp.fft.fftshift(final_intensity_native)
-    final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-
-    return final_phase, final_intensity, history
-
-
-def run_gd(
-    source_amp, target_amp, initial_phase, config: SolverConfig, smooth_lambda=0.0
-):
-    source_amp_native = jnp.fft.ifftshift(source_amp)
-    target_amp_native = jnp.fft.ifftshift(target_amp)
-    initial_phase_native = jnp.fft.ifftshift(initial_phase)
-
-    target_intensity_native = target_amp_native**2
-
-    # TODO bail out on loss or parameter convergence
-    optimizer = optax.adam(learning_rate=config.learning_rate)
-
-    slm_shape = source_amp.shape
-    blur_otf = get_gaussian_blur_otf(slm_shape, config.smooth_sigma)
-
-    def loss_fn(phase):
-        complex_phasor = jnp.exp(1j * phase)
-        complex_nf = source_amp_native * complex_phasor
-        complex_ff = propagate_ff_native(complex_nf)
-        inferred_intensity = jnp.abs(complex_ff) ** 2
-
-        norm_inferred = inferred_intensity / (jnp.mean(inferred_intensity) + 1e-12)
-        norm_target = target_intensity_native / (
-            jnp.mean(target_intensity_native) + 1e-12
-        )
-
-        diff = norm_inferred - norm_target
-
-        if config.loss_norm.upper() == "L1":
-            loss_val = jnp.mean(jnp.abs(diff))
-        elif config.loss_norm.upper() == "L2":
-            loss_val = jnp.mean(diff**2)
+    def optimize(self):
+        if self.config.method.upper() == "GS":
+            self.final_phase, self.final_intensity, self.history = self.__run_gs()
+        elif self.config.method.upper() == "GD":
+            self.final_phase, self.final_intensity, self.history = self.__run_gd()
         else:
-            raise ValueError(f"Unsupported loss norm: {config.loss_norm}")
+            raise ValueError(f"JAX backend does not support method: {self.config.method}")
 
-        loss_val += smooth_lambda * smooth_phase_regularization(phase)
+    # TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
+    def __run_gs(self):
+        logger.info(f"Solving for Gerchberg-Saxton with {config.maxiter} iterations.")
 
-        return loss_val, inferred_intensity
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
 
-    loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
+        def gs_step(phase, _):
+            complex_nf = source_amp_native * jnp.exp(1j * phase)
+            complex_ff = propagate_ff_native(complex_nf)
 
-    @jax.jit
-    def gd_step(carry, step_idx):
-        phase, opt_state, key = carry
+            ff_phase = jnp.angle(complex_ff)
+            constrained_ff = target_amp_native * jnp.exp(1j * ff_phase)
 
-        key, subkey = jax.random.split(key)
+            complex_nf_new = propagate_nf_native(constrained_ff)
+            new_phase = jnp.angle(complex_nf_new)
 
-        (loss_val, inferred_intensity), grads = loss_and_grad(phase)
-        updates, opt_state = optimizer.update(grads, opt_state, phase)
+            if self.config.smooth_phase:
+                complex_phase = jnp.exp(1j * new_phase)
+                blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+                new_phase = jnp.angle(blurred_complex)
 
-        new_phase = optax.apply_updates(phase, updates)
+            inferred_intensity = jnp.abs(complex_ff) ** 2
+            metrics = compute_step_metrics_jax(inferred_intensity, target_amp_native**2, self.trap_labels, self.num_traps)
+            
+            return new_phase, metrics
 
-        epsilon = config.initial_epsilon * jnp.exp(-config.anneal_rate * step_idx)
+        final_phase_native, history = jax.lax.scan(gs_step, initial_phase_native, jnp.arange(self.config.maxiter))
 
-        key_phase, key_mask = jax.random.split(subkey, 2)
+        final_complex_ff_native = propagate_ff_native(source_amp_native * jnp.exp(1j * final_phase_native))
+        
+        final_phase = jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        final_intensity = jnp.fft.fftshift(jnp.abs(final_complex_ff_native) ** 2)
 
-        random_phases = jax.random.uniform(
-            key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi
+        return np.asarray(final_phase), np.asarray(final_intensity), history
+
+    def __run_gd(self, smooth_lambda=0.0):
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+
+        target_intensity_native = target_amp_native**2
+
+        # TODO bail out on loss or parameter convergence
+        optimizer = optax.adam(learning_rate=self.config.learning_rate)
+
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+
+        def loss_fn(phase):
+            complex_phasor = jnp.exp(1j * phase)
+            complex_nf = source_amp_native * complex_phasor
+            complex_ff = propagate_ff_native(complex_nf)
+            inferred_intensity = jnp.abs(complex_ff) ** 2
+
+            norm_inferred = inferred_intensity / (jnp.mean(inferred_intensity) + 1e-12)
+            norm_target = target_intensity_native / (
+                jnp.mean(target_intensity_native) + 1e-12
+            )
+
+            diff = norm_inferred - norm_target
+
+            if self.config.loss_norm.upper() == "L1":
+                loss_val = jnp.mean(jnp.abs(diff))
+            elif self.config.loss_norm.upper() == "L2":
+                loss_val = jnp.mean(diff**2)
+            else:
+                raise ValueError(f"Unsupported loss norm: {self.config.loss_norm}")
+
+            loss_val += smooth_lambda * smooth_phase_regularization(phase)
+
+            return loss_val, inferred_intensity
+
+        loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
+
+        @jax.jit
+        def gd_step(carry, step_idx):
+            phase, opt_state, key = carry
+
+            key, subkey = jax.random.split(key)
+
+            (loss_val, inferred_intensity), grads = loss_and_grad(phase)
+            updates, opt_state = optimizer.update(grads, opt_state, phase)
+
+            new_phase = optax.apply_updates(phase, updates)
+
+            epsilon = self.config.initial_epsilon * jnp.exp(-self.config.anneal_rate * step_idx)
+
+            key_phase, key_mask = jax.random.split(subkey, 2)
+
+            random_phases = jax.random.uniform(
+                key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi
+            )
+
+            explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
+            new_phase = jnp.where(explore_mask, random_phases, new_phase)
+
+            if self.config.smooth_phase:
+                complex_phase = jnp.exp(1j * new_phase)
+                blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+                new_phase = jnp.angle(blurred_complex)
+
+            new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+            metrics = compute_step_metrics_jax(
+                inferred_intensity, 
+                target_intensity_native, 
+                self.trap_labels, 
+                self.num_traps
+            )
+            metrics["loss"] = loss_val
+
+            return (new_phase, opt_state, key), metrics
+
+        opt_state = optimizer.init(initial_phase_native)
+        step_key = jax.random.PRNGKey(self.config.random_seed)
+
+        (final_phase_native, _, _), history = jax.lax.scan(
+            gd_step, (initial_phase_native, opt_state, step_key), jnp.arange(self.config.maxiter)
         )
 
-        explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
-
-        new_phase = jnp.where(explore_mask, random_phases, new_phase)
-
-        if config.smooth_phase:
-            complex_phase = jnp.exp(1j * new_phase)
-            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
-            new_phase = jnp.angle(blurred_complex)
-
-        new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-
-        metrics = compute_performance_metrics(
-            inferred_intensity, target_intensity_native
+        final_complex_ff_native = propagate_ff_native(
+            source_amp_native * jnp.exp(1j * final_phase_native)
         )
-        metrics["loss"] = loss_val
+        final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
 
-        return (new_phase, opt_state, key), metrics
+        final_phase = jnp.fft.fftshift(final_phase_native)
+        final_intensity = jnp.fft.fftshift(final_intensity_native)
+        final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
-    opt_state = optimizer.init(initial_phase_native)
-    step_key = jax.random.PRNGKey(42)
-
-    (final_phase_native, _, _), history = jax.lax.scan(
-        gd_step, (initial_phase_native, opt_state, step_key), jnp.arange(config.maxiter)
-    )
-
-    final_complex_ff_native = propagate_ff_native(
-        source_amp_native * jnp.exp(1j * final_phase_native)
-    )
-    final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
-
-    final_phase = jnp.fft.fftshift(final_phase_native)
-    final_intensity = jnp.fft.fftshift(final_intensity_native)
-    final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-
-    return final_phase, final_intensity, history
-
-
-def solve_hologram(source_amp, target_amp, initial_phase, config: SolverConfig):
-    if config.method.upper() == "GS":
-        return run_gs(source_amp, target_amp, initial_phase, config)
-    elif config.method.upper() == "GD":
-        return run_gd(source_amp, target_amp, initial_phase, config)
-    else:
-        raise ValueError(f"Unknown solver method: {config.method}")
-
+        return np.asarray(final_phase), np.asarray(final_intensity), history
 
 # launch GUI with: aim up
 if __name__ == "__main__":
+    """
     logging.basicConfig(level=logging.INFO)
 
     # TODO HARDCODE
@@ -270,10 +262,11 @@ if __name__ == "__main__":
     SLM_SHAPE = tuple(target_meta["slm_shape"])  # (height, width) in pixels
     ARRAY_SHAPE = tuple(target_meta["array_shape"])
     ARRAY_PITCH = tuple(target_meta["array_pitch"])
+    """
+    # assert slm_illumination.max() > 0.0
+    # assert target_intensity.max() > 0.0
 
-    assert slm_illumination.max() > 0.0
-    assert target_intensity.max() > 0.0
-
+    """
     slm_illumination = jnp.array(slm_illumination, dtype=jnp.float64)
     target_intensity = jnp.array(target_intensity, dtype=jnp.float64)
     target_amp = jnp.sqrt(target_intensity)
@@ -291,7 +284,8 @@ if __name__ == "__main__":
     final_phase, inferred_intensity, history = solve_hologram(
         slm_illumination, target_amp, initial_phase, config
     )
-
+    """
+    """
     # TODO aim logging; track metrics and plots.
     run = Run(experiment=f"{config.method}_optimization")
     run["hparams"] = config.__dict__
@@ -337,7 +331,8 @@ if __name__ == "__main__":
         )
 
     run.close()
-
+    """
+    """
     performance_metrics = compute_performance_metrics(
         inferred_intensity, target_intensity
     )
@@ -356,3 +351,4 @@ if __name__ == "__main__":
     )
 
     logger.info("Done.")
+    """
