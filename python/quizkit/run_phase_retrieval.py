@@ -978,34 +978,36 @@ def run_phase_retrieval():
     exp.write_h5(base_dir="./results")
 
     for random_seed in (42,):
-        solver_config = SolverConfig(
-            method="GD",
-            maxiter=200,
-            random_seed=random_seed,
-            solver_backend="jax",  # {"slm_suite", "jax"}
-        )
+        for smooth_phase in (False,):
+            solver_config = SolverConfig(
+                method="GD",
+                maxiter=200,
+                random_seed=random_seed,
+                smooth_phase=smooth_phase,
+                solver_backend="jax",  # {"slm_suite", "jax"}
+            )
 
-        pprint(solver_config, expand_all=True)
+            pprint(solver_config, expand_all=True)
 
-        solver = HologramExperimentSolver(exp, solver_config)
-        solver.optimize()
-        solver.plot(base_dir="./results")
-        solver.write_h5(base_dir="./results")
+            solver = HologramExperimentSolver(exp, solver_config)
+            solver.optimize()
+            solver.plot(base_dir="./results")
+            solver.write_h5(base_dir="./results")
 
-        # TODO
-        # solver.log_to_aim(experiment_name="dummy")
+            # TODO
+            # solver.log_to_aim(experiment_name="dummy")
 
-        metrics = PerformanceMetrics.from_solver(solver)
+            metrics = PerformanceMetrics.from_solver(solver)
 
-        pprint(metrics, expand_all=True)
+            pprint(metrics, expand_all=True)
 
-        write_performance_metrics_tex(
-            filepath=exp._get_run_dir("./results")
-            / f"phase_retrieval/{solver.config.timestamp}"
-            / "performance_metrics.tex",
-            metrics_by_run={solver.config.method: metrics.to_dict()},
-            caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
-        )
+            write_performance_metrics_tex(
+                filepath=exp._get_run_dir("./results")
+                / f"phase_retrieval/{solver.config.timestamp}"
+                / "performance_metrics.tex",
+                metrics_by_run={solver.config.method: metrics.to_dict()},
+                caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
+            )
 
     logger.info(f"Done.")
 
