@@ -81,8 +81,16 @@ def get_reciprocal_trap_array_mask(target_intensity: np.ndarray, array_pitch: Tu
     perimeter_mask[y_min:y_max+1, x_min:x_max+1] = True
 
     reciprocal_mask = shifted_mask & perimeter_mask & ~target_mask
-    
-    return reciprocal_mask
+
+    labels, _ = label(reciprocal_mask)
+    coords = []
+    for s in find_objects(labels):
+        cy = (s[0].start + s[0].stop) // 2
+        cx = (s[1].start + s[1].stop) // 2
+        coords.append((cy, cx))
+    coords = jnp.array(coords)
+
+    return reciprocal_mask, coords
 
 
 def encode_target_traps(target_intensity, threshold_frac=0.0):
@@ -178,7 +186,7 @@ class HologramExperiment:
         )
         self.trap_array_mask.flags.writeable = False
 
-        self.reciprocal_mask = get_reciprocal_trap_array_mask(
+        self.reciprocal_mask, self.reciprocal_coords = get_reciprocal_trap_array_mask(
             self.target, self.run_config.array_pitch
         )
         self.reciprocal_mask.flags.writeable = False
@@ -216,6 +224,7 @@ class HologramExperiment:
             obj.target = f["target/target"][:]
             obj.trap_array_mask = f["trap_array_mask/trap_array_mask"][:]
             obj.reciprocal_mask = f["reciprocal_mask/reciprocal_mask"][:]
+            # obj.reciprocal_coords = f["reciprocal_coords/reciprocal_coords"][:]
         obj.slm_illumination.flags.writeable = False
         obj.target.flags.writeable = False
 

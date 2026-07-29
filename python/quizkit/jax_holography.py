@@ -287,18 +287,21 @@ class JaxHologramBackend:
             self.source_amp.shape, self.config.smooth_sigma
         )
 
-        def loss_fn(phase):
+        def loss_fn(phase, norm=True):
             complex_phasor = jnp.exp(1j * phase)
             complex_nf = source_amp_native * complex_phasor
             complex_ff = propagate_ff_native(complex_nf)
-            inferred_intensity = jnp.abs(complex_ff) ** 2
+            forward_intensity = jnp.abs(complex_ff) ** 2
 
-            norm_inferred = inferred_intensity / (jnp.mean(inferred_intensity) + 1e-12)
-            norm_target = target_intensity_native / (
-                jnp.mean(target_intensity_native) + 1e-12
-            )
+            if norm:
+                norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
+                norm_target = target_intensity_native / (
+                    jnp.mean(target_intensity_native) + 1e-12
+                )
 
-            diff = norm_inferred - norm_target
+                diff = norm_inferred - norm_target
+            else:
+                diff = forward_intensity - target_intensity_native
 
             if self.config.loss_norm.upper() == "L1":
                 loss_val = jnp.mean(jnp.abs(diff))
@@ -309,7 +312,7 @@ class JaxHologramBackend:
 
             loss_val += smooth_lambda * smooth_phase_regularization(phase)
 
-            return loss_val, inferred_intensity
+            return loss_val, forward_intensity
 
         loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
 

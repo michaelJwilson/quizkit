@@ -18,7 +18,7 @@ from slmsuite.holography.algorithms import SpotHologram
 from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs
 from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
-from quizkit.plotting import plot_scalar_field
+from quizkit.plotting import plot_scalar_field, plot_stack_with_marginals
 from quizkit.writers import write_hdf5
 
 import aim.ext.cleanup
@@ -1036,6 +1036,26 @@ class HologramExperimentSolver:
             interpolation="nearest",
         )
 
+        # NB target intensity trap stack
+        target_stack_mean = reduce_stack_similar_crops(
+            self.target_intensity,
+            self.exp.trap_coords,
+            self.stack_h,
+            self.stack_w,
+            reducer=jnp.mean,
+        )
+
+        plot_stack_with_marginals(
+            plot_path=plot_dir / "trap_stack_target_intensity.pdf",
+            field=target_stack_mean, # Linear scale usually better for pure target
+            cmap="viridis",
+            title="Target Trap Stack: Mean",
+            cbar_label="Intensity [a.u.]",
+            xlabel=r"$k_n$ [knm]",
+            ylabel=r"$k_m$ [knm]",
+        )
+
+        # NB forward intensity trap stack
         stack_mean_similar_traps = reduce_stack_similar_crops(
             self.forward_intensity,
             self.exp.trap_coords,
@@ -1054,6 +1074,7 @@ class HologramExperimentSolver:
             ylabel=r"$k_m$ [knm]",
         )
 
+        # NB forward intensity trap stack std. dev.
         stack_std_similar_traps = reduce_stack_similar_crops(
             self.forward_intensity,
             self.exp.trap_coords,
@@ -1068,6 +1089,25 @@ class HologramExperimentSolver:
             cmap="viridis",
             title="trap stack: std. dev",
             cbar_label="ln. std dev [a.u.]",
+            xlabel=r"$k_n$ [knm]",
+            ylabel=r"$k_m$ [knm]",
+        )
+
+        # NB forward intensity reciprocal trap stack
+        reciprocal_stack_mean = reduce_stack_similar_crops(
+            self.forward_intensity,
+            self.exp.reciprocal_coords,
+            self.stack_h,
+            self.stack_w,
+            reducer=jnp.mean,
+        )
+
+        plot_stack_with_marginals(
+            plot_path=plot_dir / "reciprocal_trap_stack_forward.pdf",
+            field=np.log(reciprocal_stack_mean + 1e-12),
+            cmap="inferno",
+            title="Reciprocal Lattice: Mean",
+            cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
         )
