@@ -1222,7 +1222,7 @@ def run_phase_retrieval():
 
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method="GD", # {"GS", "GD", "AA", "HIO"}
+                    method="GS", # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,
