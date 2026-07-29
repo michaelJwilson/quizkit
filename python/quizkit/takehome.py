@@ -117,29 +117,6 @@ def plot_scalar_field(
     plt.close(fig)
 """
 
-def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
-    # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
-
-    # NB maximum direction we can redirect the input beam,
-    max_steering_angle = wavelength / pixel_pitch
-
-    # NB O(1) degrees
-    max_steering_angle_deg = np.degrees(max_steering_angle)
-
-    # NB nyquist wavenumber on the image place,
-    #    requires a period of exactly 2 pixels (a phase map of [0,π,0,π])
-    farfield_extent = max_steering_angle / 2.0  # radians
-    farfield_resolution = (
-        farfield_extent / slm_shape
-    )  # radians, assumes square slm pixels.
-
-    return {
-        "max_steering_angle_rad": float(max_steering_angle),
-        "max_steering_angle_deg": float(max_steering_angle_deg),
-        "farfield_extent_rad": float(farfield_extent),
-        "farfield_resolution_rad": float(farfield_resolution),
-    }
-
 
 def write_performance_metrics_tex(
     filepath: str | Path,
@@ -365,7 +342,7 @@ def extract_background_artifacts(
 
     return artifacts, residual_int
 
-
+"""
 def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
     if array_center is not None:
         center_x, center_y = array_center[0], array_center[1]
@@ -388,7 +365,7 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
     trap_array_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
 
     return trap_array_mask
-
+"""
 """
 class ConfigMixin:
     def to_dict(self) -> dict:
