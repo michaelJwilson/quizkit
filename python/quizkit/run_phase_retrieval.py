@@ -196,6 +196,8 @@ def write_performance_metrics_tex(
     with open(out_path, "w") as f:
         f.write(latex)
 '''
+
+# TODO merge with PerformanceMetrics, which should own description strings and formatting.
 def write_performance_metrics_tex(
     filepath: str | Path,
     metrics_by_run: dict[str, dict],
