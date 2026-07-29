@@ -1,33 +1,33 @@
-import h5py
-import datetime
-import random
-import logging
+import atexit
 import json
+import logging
+import random
 import time
-from enum import Enum
-from dataclasses import dataclass, asdict, field
-from typing import Tuple, Optional, Any
-
 import uuid  # TODO
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Optional, Tuple
+
+import aim.ext.cleanup
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from aim import Run
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
-from scipy.ndimage import find_objects, label, binary_dilation
+from scipy.ndimage import binary_dilation, find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
-from pathlib import Path
+
+from quizkit.configs import (ConfigMixin, RunConfig, SolverConfig, TrapConfig,
+                             TrapConfigs)
+from quizkit.hologram_experiment import (HologramExperiment,
+                                         encode_target_traps, get_trap_zoom)
+from quizkit.jax_holography import JaxHologramBackend
 # from functools import cached_property
 from quizkit.plotting import plot_scalar_field
 from quizkit.writers import write_hdf5
-from quizkit.configs import TrapConfig, TrapConfigs, RunConfig, SolverConfig, ConfigMixin
-from quizkit.hologram_experiment import HologramExperiment, get_trap_zoom, encode_target_traps
-from quizkit.jax_holography import JaxHologramBackend
-from aim import Run
-
-import atexit
-import aim.ext.cleanup
 
 # TODO HACK aim thread issue for python 3.12 (TBC)
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
@@ -43,6 +43,7 @@ random.seed(42)
 np.random.seed(42)
 
 start_time = time.time()
+
 
 class RuntimeFormatter(logging.Formatter):
     def format(self, record):
@@ -211,6 +212,7 @@ def write_performance_metrics_tex(
     with open(out_path, "w") as f:
         f.write(latex)
 
+
 """
 def get_trap_zoom(target_intensity, pad=25):
     trap_coords = np.argwhere(target_intensity > 0)
@@ -249,6 +251,7 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
 
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
 """
+
 
 def reduce_stack_similar_crops(
     forward_intensity,
@@ -341,6 +344,7 @@ def extract_background_artifacts(
     artifacts = artifacts[:max_artifacts]
 
     return artifacts, residual_int
+
 
 """
 def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
@@ -635,6 +639,7 @@ class HologramExperiment:
         )
 """
 
+
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     efficiency: float
@@ -730,7 +735,9 @@ class HologramExperimentSolver:
         self.stack_w = 50
 
         rng = np.random.default_rng(seed=self.config.random_seed)
-        self.init_phases = rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape)
+        self.init_phases = rng.uniform(
+            -np.pi, np.pi, size=self.exp.run_config.slm_shape
+        )
 
         if self.backend_type == "slm_suite":
             self.backend = SpotHologram.make_rectangular_array(
@@ -769,33 +776,36 @@ class HologramExperimentSolver:
 
         self.config.solver_runtime = time.time() - start_time
 
-        logger.info(f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s")
+        logger.info(
+            f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
+        )
 
     def log_to_aim(self, experiment_name: str = "phase_retrieval_sweep"):
-        """Pushes tracked JAX history metrics to Aim."""
         if self.backend_type != "jax":
-            logger.warning("Aim logging currently only supports the JAX backend history.")
+            logger.warning(
+                "Aim logging currently only supports the JAX backend history."
+            )
             return
 
         run = Run(experiment=experiment_name)
-        
+
         # Flatten configs for Aim hparams
         run["hparams"] = {
             "run_config": self.exp.run_config.to_dict(),
-            "solver_config": self.config.to_dict()
+            "solver_config": self.config.to_dict(),
         }
 
         history = self.backend.history
-        
+
         for step_idx in range(self.config.maxiter):
             for metric_name, metric_array in history.items():
                 run.track(
                     metric_array[step_idx].item(),
                     name=metric_name,
                     step=step_idx,
-                    context={"subset": "Metrics"}
+                    context={"subset": "Metrics"},
                 )
-        
+
         run.close()
         logger.info(f"Aim run closed for {self.config.hash}")
 
@@ -978,7 +988,7 @@ def run_phase_retrieval():
             method="GD",
             maxiter=200,
             random_seed=random_seed,
-            solver_backend="jax", # {"slm_suite", "jax"}
+            solver_backend="jax",  # {"slm_suite", "jax"}
         )
 
         pprint(solver_config, expand_all=True)

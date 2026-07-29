@@ -1,11 +1,10 @@
-
 import datetime
 import json
-from enum import Enum
-from dataclasses import dataclass, asdict, field
-from typing import Tuple, Optional
-
 import uuid  # TODO
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Optional, Tuple
+
 import numpy as np
 
 

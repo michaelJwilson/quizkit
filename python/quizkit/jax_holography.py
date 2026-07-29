@@ -1,20 +1,24 @@
 import logging
+
 import jax
 
 jax.config.update("jax_enable_x64", True)
 
+import atexit
+
+import aim.ext.cleanup
 import jax.numpy as jnp
 import numpy as np
 import optax
-# from aim import Run
 
 # from rich.pretty import pprint
 # from quizkit.readers import read_hdf5
 from quizkit.configs import SolverConfig
 from quizkit.hologram_experiment import HologramExperiment
 
-import atexit
-import aim.ext.cleanup
+# from aim import Run
+
+
 
 # TODO HACK
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
@@ -49,11 +53,15 @@ def smooth_phase_regularization(phase):
 
 
 # TODO
-def compute_step_metrics_jax(inferred_intensity, target_intensity, trap_labels, num_traps):
+def compute_step_metrics_jax(
+    inferred_intensity, target_intensity, trap_labels, num_traps
+):
     flat_intensity = inferred_intensity.ravel()
     flat_labels = trap_labels.ravel()
 
-    trap_powers = jnp.bincount(flat_labels, weights=flat_intensity, length=num_traps + 1)[1:]
+    trap_powers = jnp.bincount(
+        flat_labels, weights=flat_intensity, length=num_traps + 1
+    )[1:]
     trap_mean = jnp.mean(trap_powers)
     trap_min = jnp.min(trap_powers)
     trap_max = jnp.max(trap_powers)
@@ -63,22 +71,26 @@ def compute_step_metrics_jax(inferred_intensity, target_intensity, trap_labels, 
     sig_power = jnp.sum(trap_powers)
     bg_power = total_power - sig_power
 
-    bg_mask = (flat_labels == 0)
+    bg_mask = flat_labels == 0
     bg_intensities = jnp.where(bg_mask, flat_intensity, 0.0)
     max_bg = jnp.max(bg_intensities)
 
     ff_centered = flat_intensity - jnp.mean(flat_intensity)
     target_centered = target_intensity.ravel() - jnp.mean(target_intensity)
-    pearson = jnp.sum(ff_centered * target_centered) / (jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2)) + 1e-12)
+    pearson = jnp.sum(ff_centered * target_centered) / (
+        jnp.sqrt(jnp.sum(ff_centered**2) * jnp.sum(target_centered**2)) + 1e-12
+    )
 
     return {
         "efficiency": sig_power / total_power,
         "stray_light_fraction": bg_power / total_power,
         "pearson": pearson,
         "trap_cv": trap_cv,
-        "trap_uniformity_minmax": 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+        "trap_uniformity_minmax": 1.0
+        - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
         "ghost_to_dimmest_ratio": max_bg / (trap_min + 1e-12),
     }
+
 
 class JaxHologramBackend:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):
@@ -91,7 +103,9 @@ class JaxHologramBackend:
         self.num_traps = self.exp.num_traps
 
         rng = np.random.default_rng(self.config.random_seed)
-        self.initial_phase = jnp.array(rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape))
+        self.initial_phase = jnp.array(
+            rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape)
+        )
 
         self.final_phase = None
         self.final_intensity = None
@@ -103,16 +117,22 @@ class JaxHologramBackend:
         elif self.config.method.upper() == "GD":
             self.final_phase, self.final_intensity, self.history = self.__run_gd()
         else:
-            raise ValueError(f"JAX backend does not support method: {self.config.method}")
+            raise ValueError(
+                f"JAX backend does not support method: {self.config.method}"
+            )
 
     # TODO stop grad tracking; in-place updates; FFT(W) plan; for GS.
     def __run_gs(self):
-        logger.info(f"Solving for Gerchberg-Saxton with {self.config.maxiter} iterations.")
+        logger.info(
+            f"Solving for Gerchberg-Saxton with {self.config.maxiter} iterations."
+        )
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)
         initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
-        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+        blur_otf = get_gaussian_blur_otf(
+            self.source_amp.shape, self.config.smooth_sigma
+        )
 
         def gs_step(phase, _):
             complex_nf = source_amp_native * jnp.exp(1j * phase)
@@ -130,15 +150,26 @@ class JaxHologramBackend:
                 new_phase = jnp.angle(blurred_complex)
 
             inferred_intensity = jnp.abs(complex_ff) ** 2
-            metrics = compute_step_metrics_jax(inferred_intensity, target_amp_native**2, self.trap_labels, self.num_traps)
-            
+            metrics = compute_step_metrics_jax(
+                inferred_intensity,
+                target_amp_native**2,
+                self.trap_labels,
+                self.num_traps,
+            )
+
             return new_phase, metrics
 
-        final_phase_native, history = jax.lax.scan(gs_step, initial_phase_native, jnp.arange(self.config.maxiter))
+        final_phase_native, history = jax.lax.scan(
+            gs_step, initial_phase_native, jnp.arange(self.config.maxiter)
+        )
 
-        final_complex_ff_native = propagate_ff_native(source_amp_native * jnp.exp(1j * final_phase_native))
-        
-        final_phase = jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        final_complex_ff_native = propagate_ff_native(
+            source_amp_native * jnp.exp(1j * final_phase_native)
+        )
+
+        final_phase = (
+            jnp.mod(jnp.fft.fftshift(final_phase_native) + jnp.pi, 2 * jnp.pi) - jnp.pi
+        )
         final_intensity = jnp.fft.fftshift(jnp.abs(final_complex_ff_native) ** 2)
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
@@ -153,7 +184,9 @@ class JaxHologramBackend:
         # TODO bail out on loss or parameter convergence
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
 
-        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+        blur_otf = get_gaussian_blur_otf(
+            self.source_amp.shape, self.config.smooth_sigma
+        )
 
         def loss_fn(phase):
             complex_phasor = jnp.exp(1j * phase)
@@ -192,7 +225,9 @@ class JaxHologramBackend:
 
             new_phase = optax.apply_updates(phase, updates)
 
-            epsilon = self.config.initial_epsilon * jnp.exp(-self.config.anneal_rate * step_idx)
+            epsilon = self.config.initial_epsilon * jnp.exp(
+                -self.config.anneal_rate * step_idx
+            )
 
             key_phase, key_mask = jax.random.split(subkey, 2)
 
@@ -210,10 +245,10 @@ class JaxHologramBackend:
 
             new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
             metrics = compute_step_metrics_jax(
-                inferred_intensity, 
-                target_intensity_native, 
-                self.trap_labels, 
-                self.num_traps
+                inferred_intensity,
+                target_intensity_native,
+                self.trap_labels,
+                self.num_traps,
             )
             metrics["loss"] = loss_val
 
@@ -223,7 +258,9 @@ class JaxHologramBackend:
         step_key = jax.random.PRNGKey(self.config.random_seed)
 
         (final_phase_native, _, _), history = jax.lax.scan(
-            gd_step, (initial_phase_native, opt_state, step_key), jnp.arange(self.config.maxiter)
+            gd_step,
+            (initial_phase_native, opt_state, step_key),
+            jnp.arange(self.config.maxiter),
         )
 
         final_complex_ff_native = propagate_ff_native(
@@ -236,6 +273,7 @@ class JaxHologramBackend:
         final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
+
 
 # launch GUI with: aim up
 if __name__ == "__main__":

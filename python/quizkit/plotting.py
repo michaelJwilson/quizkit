@@ -1,4 +1,5 @@
 import logging
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -17,6 +18,7 @@ def plot_image(filepath, data):
 
     fig.savefig(filepath, dpi=300, bbox_inches="tight")
 """
+
 
 def _add_colorbar(ax, im, label=None):
     divider = make_axes_locatable(ax)

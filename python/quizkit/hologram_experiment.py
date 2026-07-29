@@ -1,29 +1,31 @@
-import h5py
 import datetime
-import random
-import logging
 import json
+import logging
+import random
 import time
-from enum import Enum
-from dataclasses import dataclass, asdict, field
-from typing import Tuple, Optional, Any
-
 import uuid  # TODO
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from functools import cached_property
+from pathlib import Path
+from typing import Any, Optional, Tuple
+
+import h5py
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from rich.pretty import pprint
-from scipy.ndimage import find_objects, label, binary_dilation
+from scipy.ndimage import binary_dilation, find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
-from pathlib import Path
-from functools import cached_property
+
+from quizkit.configs import RunConfig, TrapConfig
 from quizkit.plotting import plot_scalar_field
 from quizkit.writers import write_hdf5
-from quizkit.configs import TrapConfig, RunConfig
 
 logger = logging.getLogger(__name__)
+
 
 def get_gaussian_slm_illumination(slm_shape):
     # NB construct source amplitude profile
@@ -36,6 +38,7 @@ def get_gaussian_slm_illumination(slm_shape):
     beam_waist_px = 0.35 * min(slm_shape)  # 1/e^2 amplitude radius, in pixels
 
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
+
 
 def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
     if array_center is not None:
@@ -60,6 +63,7 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
 
     return trap_array_mask
 
+
 def encode_target_traps(target_intensity, threshold_frac=0.0):
     threshold = threshold_frac * target_intensity.max()
     binary_target = target_intensity > threshold
@@ -81,6 +85,7 @@ def encode_target_traps(target_intensity, threshold_frac=0.0):
 
     return labeled_mask, num_traps, np.array(coords), trap_h, trap_w
 
+
 def get_trap_zoom(target_intensity, pad=25):
     trap_coords = np.argwhere(target_intensity > 0)
 
@@ -96,7 +101,8 @@ def get_trap_zoom(target_intensity, pad=25):
 
     return (x_min, x_max, y_min, y_max)
 
-# TODO 
+
+# TODO
 def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
     # TODO https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html
 
@@ -119,6 +125,7 @@ def compute_structural_metrics(wavelength, pixel_pitch, slm_shape):
         "farfield_extent_rad": float(farfield_extent),
         "farfield_resolution_rad": float(farfield_resolution),
     }
+
 
 class HologramExperiment:
     _is_frozen = False

@@ -1,5 +1,6 @@
-import h5py
 import logging
+
+import h5py
 
 logger = logging.getLogger(__name__)
 
