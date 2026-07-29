@@ -1033,7 +1033,7 @@ class HologramExperimentSolver:
             plot_path=plot_dir / "trap_stack_target_intensity.pdf",
             field=target_stack_mean, # Linear scale usually better for pure target
             cmap="viridis",
-            title="Target Trap Stack: Mean",
+            title="target trap stack: mean",
             cbar_label="Intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
@@ -1090,7 +1090,7 @@ class HologramExperimentSolver:
             plot_path=plot_dir / "reciprocal_trap_stack_forward.pdf",
             field=np.log(reciprocal_stack_mean + 1e-12),
             cmap="inferno",
-            title="Reciprocal Lattice: Mean",
+            title="reciprocal trap stack: mean",
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
