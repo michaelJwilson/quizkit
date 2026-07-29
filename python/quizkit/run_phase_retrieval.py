@@ -15,8 +15,7 @@ from rich.pretty import pprint
 from scipy.ndimage import binary_dilation, find_objects, label
 from slmsuite.holography.algorithms import SpotHologram
 
-from quizkit.configs import (ConfigMixin, RunConfig, SolverConfig,
-                             TrapConfigs)
+from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs
 from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
 from quizkit.plotting import plot_scalar_field
@@ -780,14 +779,14 @@ class HologramExperimentSolver:
             run["hparams"] = {
                 "run": self.exp.run_config.to_dict(),
                 "solver": self.config.to_dict(),
-                "trap": self.exp.run_config.trap_config.to_dict()
+                "trap": self.exp.run_config.trap_config.to_dict(),
             }
 
             if hasattr(self.backend, "history"):
                 for step_idx in range(self.config.maxiter):
                     for metric_name, metric_array in self.backend.history.items():
                         run.track(
-                            float(metric_array[step_idx]), # ensure standard float
+                            float(metric_array[step_idx]),  # ensure standard float
                             name=metric_name,
                             step=step_idx,
                             context={"subset": "Metrics"},
