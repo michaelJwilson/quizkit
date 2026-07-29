@@ -164,6 +164,33 @@ def extract_background_artifacts(
 
     return artifacts, residual_int
 
+def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
+    x_val, y_val = coords
+    wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+    sinc2_x = np.sinc((x_val - x0) / wx) ** 2
+    sinc2_y = np.sinc((y_val - y0) / wy) ** 2
+    return I0 * sinc2_x * sinc2_y + bg
+
+def gaussian_2d(coords, I0, x0, y0, wx, wy, bg):
+    x_val, y_val = coords
+    wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+    r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
+    return I0 * np.exp(-0.5 * r2) + bg
+
+def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
+    # Separable 2D Lorentzian (better matches rectangular aperture cross-wings)
+    x_val, y_val = coords
+    wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+    lx = 1.0 / (1.0 + ((x_val - x0) / wx) ** 2)
+    ly = 1.0 / (1.0 + ((y_val - y0) / wy) ** 2)
+    return I0 * lx * ly + bg
+
+def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
+    # Elliptical Moffat profile (beta=2.5 is standard for optical turbulence/scattering)
+    x_val, y_val = coords
+    wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
+    r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
+    return I0 * (1.0 + r2) ** (-2.5) + bg
 
 def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     """
@@ -174,34 +201,6 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     """
     h, w = z_data.shape
     cy, cx = h // 2, w // 2
-
-    def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
-        x_val, y_val = coords
-        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        sinc2_x = np.sinc((x_val - x0) / wx) ** 2
-        sinc2_y = np.sinc((y_val - y0) / wy) ** 2
-        return I0 * sinc2_x * sinc2_y + bg
-
-    def gaussian_2d(coords, I0, x0, y0, wx, wy, bg):
-        x_val, y_val = coords
-        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
-        return I0 * np.exp(-0.5 * r2) + bg
-
-    def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
-        # Separable 2D Lorentzian (better matches rectangular aperture cross-wings)
-        x_val, y_val = coords
-        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        lx = 1.0 / (1.0 + ((x_val - x0) / wx) ** 2)
-        ly = 1.0 / (1.0 + ((y_val - y0) / wy) ** 2)
-        return I0 * lx * ly + bg
-
-    def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
-        # Elliptical Moffat profile (beta=2.5 is standard for optical turbulence/scattering)
-        x_val, y_val = coords
-        wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
-        return I0 * (1.0 + r2) ** (-2.5) + bg
 
     models = {
         "sinc2": sinc2_2d,
@@ -513,6 +512,26 @@ class HologramExperimentSolver:
             f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
         )
 
+         forward_stack_mean = np.asarray(
+            reduce_stack_similar_crops(
+                self.forward_intensity,
+                self.exp.trap_coords,
+                self.stack_h,
+                self.stack_w,
+                reducer=jnp.mean,
+            )
+        )
+
+        # TODO
+        self.forward_psf_model = "gaussian"
+        forward_psf_model_params, forward_psf_xprofile, forward_psf_yprofile = fit_forward_psf(
+            forward_stack_mean, model=self.forward_psf_model, fit_background=False
+        )
+
+        self.forward_psf_model_params = forward_psf_model_params
+        self.forward_psf_xprofile = forward_psf_xprofile
+        self.forward_psf_yprofile = forward_psf_yprofile
+
     # TODO BUG
     def update_aim(self, experiment_name: str):
         if not hasattr(self.backend, "history"):
@@ -615,11 +634,6 @@ class HologramExperimentSolver:
                 self.stack_w,
                 reducer=jnp.mean,
             )
-        )
-
-        # TODO
-        _, fit_x, fit_y = fit_forward_psf(
-            forward_stack_mean, model="gaussian", fit_background=False
         )
 
         # NB
