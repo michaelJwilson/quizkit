@@ -205,7 +205,8 @@ def write_performance_metrics_tex(
     descriptions = {
         "efficiency": "Fraction of total power within target trap regions",
         "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
-        "interference_efficiency": "Fraction of total power leaking into reciprocal lattice",
+        "array_efficiency": "Fraction of total power within the trap array region",
+        "interference_efficiency": "Fraction of array power within the reciprocal array",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_cv": "Coefficient of variation of integrated trap powers",
         "trap_mean": "Mean integrated trap power",
