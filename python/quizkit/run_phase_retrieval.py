@@ -331,7 +331,7 @@ def extract_background_artifacts(
 
 
 """
-def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
+def get_trap_array_perimeter_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
     if array_center is not None:
         center_x, center_y = array_center[0], array_center[1]
     else:
@@ -349,10 +349,10 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
     y_min_clamped = max(0, y_min)
     y_max_clamped = min(slm_shape[0], y_max)
 
-    trap_array_mask = np.zeros(slm_shape, dtype=bool)
-    trap_array_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
+    trap_array_perimeter_mask = np.zeros(slm_shape, dtype=bool)
+    trap_array_perimeter_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
 
-    return trap_array_mask
+    return trap_array_perimeter_mask
 """
 """
 class ConfigMixin:
@@ -466,14 +466,14 @@ class HologramExperiment:
         self.target = hologram.target.copy()
         self.target.flags.writeable = False
 
-        self.trap_array_mask = get_trap_array_mask(
+        self.trap_array_perimeter_mask = get_trap_array_perimeter_mask(
             self.run_config.slm_shape,
             self.run_config.array_shape,
             self.run_config.array_pitch,
             self.run_config.array_center,
             pad=25,
         )
-        self.trap_array_mask.flags.writeable = False
+        self.trap_array_perimeter_mask.flags.writeable = False
 
         trap_labels_np, self.num_traps, coords_np, self.trap_h, self.trap_w = (
             encode_target_traps(self.target, threshold_frac=0.0)
@@ -505,7 +505,7 @@ class HologramExperiment:
         with h5py.File(h5_path, "r") as f:
             obj.slm_illumination = f["slm/slm_illumination"][:]
             obj.target = f["target/target"][:]
-            obj.trap_array_mask = f["trap_array_mask/trap_array_mask"][:]
+            obj.trap_array_perimeter_mask = f["trap_array_perimeter_mask/trap_array_perimeter_mask"][:]
 
         obj.slm_illumination.flags.writeable = False
         obj.target.flags.writeable = False
@@ -516,7 +516,7 @@ class HologramExperiment:
 
         obj.trap_labels = jnp.array(trap_labels_np)
         obj.trap_coords = jnp.array(coords_np)
-        obj.trap_array_mask = jnp.array(obj.trap_array_mask)
+        obj.trap_array_perimeter_mask = jnp.array(obj.trap_array_perimeter_mask)
         obj.crop_coords = obj.trap_coords
 
         obj._is_frozen = True
@@ -617,9 +617,9 @@ class HologramExperiment:
 
         write_hdf5(
             filepath=hdf5_path,
-            data=self.trap_array_mask,
-            group_name="trap_array_mask",
-            dataset_name="trap_array_mask",
+            data=self.trap_array_perimeter_mask,
+            group_name="trap_array_perimeter_mask",
+            dataset_name="trap_array_perimeter_mask",
         )
 """
 """
@@ -709,34 +709,34 @@ class PerformanceMetrics(ConfigMixin):
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
-        "efficiency": "Fraction of total power within target trap regions",
-        "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
-        "array_efficiency": "Fraction of total power within the trap array region",
-        "interference_efficiency": "Fraction of array power within the reciprocal array",
+        "efficiency": "Fraction of forward power within the target trap regions",
+        "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
+        "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
+        "efficiency_reciprocal": "Fraction of forward power within the reciprocal array",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_cv": "Coefficient of variation of integrated trap powers",
+        "trap_med": "Median integrated trap power",
         "trap_mean": "Mean integrated trap power",
+        "trap_std": "Standard deviation of integrated trap power",
         "trap_min": "Minimum integrated trap power",
         "trap_max": "Maximum integrated trap power",
-        "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
-        "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
-        "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
-        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity",
+        "trap_uniformity": "Michelson uniformity of integrated trap powers",
+        "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
     }
 
     efficiency: float
     stray_light_fraction: float
-    array_efficiency: float
-    interference_efficiency: float
+    efficiency_perimeter: float
+    efficiency_reciprocal: float
     pearson: float
     trap_cv: float
+    trap_med: float
     trap_mean: float
+    trap_std: float
     trap_min: float
     trap_max: float
-    trap_uniformity_minmax: float
-    ghost_to_mean_ratio: float
-    ghost_to_dimmest_ratio: float
-    signal_to_background_floor: float
+    trap_uniformity: float
+    ghost_to_trap_med_ratio: float
     trap_powers: np.ndarray = field(repr=False)
 
     @classmethod
@@ -745,13 +745,13 @@ class PerformanceMetrics(ConfigMixin):
         forward_intensity: np.ndarray,
         target_intensity: np.ndarray,
         trap_labels: jnp.ndarray | np.ndarray,
-        trap_array_mask: jnp.ndarray | np.ndarray,
+        trap_array_perimeter_mask: jnp.ndarray | np.ndarray,
         num_traps: int,
         reciprocal_mask: np.ndarray,
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
-        trap_array_mask = np.asarray(trap_array_mask, dtype=bool)
+        trap_array_perimeter_mask = np.asarray(trap_array_perimeter_mask, dtype=bool)
 
         flat_forward_intensity = ff_int.ravel()
         flat_trap_labels = np.asarray(trap_labels).ravel()
@@ -765,21 +765,23 @@ class PerformanceMetrics(ConfigMixin):
 
         trap_min = float(np.min(trap_powers))
         trap_max = float(np.max(trap_powers))
+        trap_med = float(np.median(trap_powers))
         trap_mean = float(np.mean(trap_powers))
         trap_std = float(np.std(trap_powers))
 
         trap_cv = float(trap_std / (trap_mean + 1e-12))
 
         total_power = float(np.sum(flat_forward_intensity))
-        total_trap_array_power = float(np.sum(ff_int[trap_array_mask]))
+        total_trap_perimeter_power = float(np.sum(ff_int[trap_array_perimeter_mask]))
+        total_trap_reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
 
         sig_power = float(np.sum(trap_powers))
         bg_power = total_power - sig_power
 
-        array_efficiency = total_trap_array_power / (total_trap_array_power + 1e-12)
+        efficiency_perimeter = total_trap_perimeter_power / (total_power + 1e-12)
 
         reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
-        interference_efficiency = reciprocal_power / (total_power + 1e-12)
+        efficiency_reciprocal = reciprocal_power / (total_power + 1e-12)
 
         bg_mask = flat_trap_labels == 0
         bg_intensities = flat_forward_intensity[bg_mask]
@@ -792,21 +794,23 @@ class PerformanceMetrics(ConfigMixin):
         denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
         pearson = float(numerator / (denominator + 1e-12))
 
+        trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
+        ghost_to_trap_med_ratio=max_bg / (trap_med + 1e-12),
+
         return cls(
             efficiency=sig_power / total_power,
             stray_light_fraction=bg_power / total_power,
-            array_efficiency=array_efficiency,
-            interference_efficiency=interference_efficiency,
+            efficiency_perimeter=efficiency_perimeter,
+            efficiency_reciprocal=efficiency_reciprocal,
             pearson=pearson,
             trap_cv=trap_cv,
+            trap_med=trap_med,
             trap_mean=trap_mean,
+            trap_std=trap_std,
             trap_min=trap_min,
             trap_max=trap_max,
-            trap_uniformity_minmax=1.0
-            - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
-            ghost_to_mean_ratio=max_bg / (trap_mean + 1e-12),
-            ghost_to_dimmest_ratio=max_bg / (trap_min + 1e-12),
-            signal_to_background_floor=trap_mean / (mean_bg + 1e-12),
+            trap_uniformity=trap_uniformity,
+            ghost_to_trap_med_ratio=ghost_to_trap_med_ratio,
             trap_powers=trap_powers,
         )
 
@@ -815,8 +819,8 @@ class PerformanceMetrics(ConfigMixin):
         return cls.compute(
             forward_intensity=solver.forward_intensity,
             target_intensity=solver.target_intensity,
-            trap_array_mask=solver.exp.trap_array_mask,
             trap_labels=solver.exp.trap_labels,
+            trap_array_perimeter_mask=solver.exp.trap_array_perimeter_mask,
             num_traps=solver.exp.num_traps,
             reciprocal_mask=solver.exp.reciprocal_mask,
         )
@@ -1114,7 +1118,7 @@ class HologramExperimentSolver:
 
     def extract_off_target_intensity(self):
         # TODO
-        # exclusion_mask=~self.exp.trap_array_mask,
+        # exclusion_mask=~self.exp.trap_array_perimeter_mask,
         exclusion_mask = None
 
         artifacts, _ = extract_background_artifacts(

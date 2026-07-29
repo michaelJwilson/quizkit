@@ -40,7 +40,7 @@ def get_gaussian_slm_illumination(slm_shape):
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
 
-def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
+def get_trap_array_perimeter_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
     if array_center is not None:
         center_x, center_y = array_center[0], array_center[1]
     else:
@@ -58,10 +58,10 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
     y_min_clamped = max(0, y_min)
     y_max_clamped = min(slm_shape[0], y_max)
 
-    trap_array_mask = np.zeros(slm_shape, dtype=bool)
-    trap_array_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
+    trap_array_perimeter_mask = np.zeros(slm_shape, dtype=bool)
+    trap_array_perimeter_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
 
-    return trap_array_mask
+    return trap_array_perimeter_mask
 
 # TODO
 def get_reciprocal_trap_array_mask(target_intensity: np.ndarray, array_pitch: Tuple[int, int]) -> np.ndarray:
@@ -177,20 +177,19 @@ class HologramExperiment:
         self.target = hologram.target.copy()
         self.target.flags.writeable = False
 
-        self.trap_array_mask = get_trap_array_mask(
+        self.trap_array_perimeter_mask = get_trap_array_perimeter_mask(
             self.run_config.slm_shape,
             self.run_config.array_shape,
             self.run_config.array_pitch,
             self.run_config.array_center,
             pad=25,
         )
-        self.trap_array_mask.flags.writeable = False
+        self.trap_array_perimeter_mask.flags.writeable = False
 
         self.reciprocal_mask, self.reciprocal_coords = get_reciprocal_trap_array_mask(
             self.target, self.run_config.array_pitch
         )
         self.reciprocal_mask.flags.writeable = False
-
 
         trap_labels_np, self.num_traps, coords_np, self.trap_h, self.trap_w = (
             encode_target_traps(self.target, threshold_frac=0.0)
@@ -222,7 +221,7 @@ class HologramExperiment:
         with h5py.File(h5_path, "r") as f:
             obj.slm_illumination = f["slm/slm_illumination"][:]
             obj.target = f["target/target"][:]
-            obj.trap_array_mask = f["trap_array_mask/trap_array_mask"][:]
+            obj.trap_array_perimeter_mask = f["trap_array_perimeter_mask/trap_array_perimeter_mask"][:]
             obj.reciprocal_mask = f["reciprocal_mask/reciprocal_mask"][:]
             # obj.reciprocal_coords = f["reciprocal_coords/reciprocal_coords"][:]
         obj.slm_illumination.flags.writeable = False
@@ -234,7 +233,7 @@ class HologramExperiment:
 
         obj.trap_labels = jnp.array(trap_labels_np)
         obj.trap_coords = jnp.array(coords_np)
-        obj.trap_array_mask = jnp.array(obj.trap_array_mask)
+        obj.trap_array_perimeter_mask = jnp.array(obj.trap_array_perimeter_mask)
         obj.crop_coords = obj.trap_coords
 
         obj._is_frozen = True
@@ -335,7 +334,7 @@ class HologramExperiment:
 
         write_hdf5(
             filepath=hdf5_path,
-            data=self.trap_array_mask,
-            group_name="trap_array_mask",
-            dataset_name="trap_array_mask",
+            data=self.trap_array_perimeter_mask,
+            group_name="trap_array_perimeter_mask",
+            dataset_name="trap_array_perimeter_mask",
         )
