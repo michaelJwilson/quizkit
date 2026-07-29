@@ -321,7 +321,7 @@ class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
         "uniformity": "Michelson uniformity of integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
-        "efficiency_diffuse": "Fraction of forward power convolved with best-fit forward psf",
+        "efficiency_diffuse": "Fraction of forward power within the (best-fit) forward psf target trap regions (TBD)",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
@@ -407,6 +407,7 @@ class PerformanceMetrics(ConfigMixin):
         denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
         pearson = float(numerator / (denominator + 1e-12))
 
+        # TODO should be peak in a trap; rather than integrated.
         uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
@@ -752,7 +753,7 @@ class HologramExperimentSolver:
             plot_path=plot_dir / "dual_trap_stack_forward.pdf",
             field=np.log(dual_stack_mean + 1e-12),
             cmap="inferno",
-            title="dual trap stack: mean",
+            title="forward dual trap stack: mean",
             cbar_label="ln. intensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
