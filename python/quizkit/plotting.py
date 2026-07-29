@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 logger = logging.getLogger(__name__)
@@ -154,3 +155,95 @@ def plot_stack_with_marginals(
         return fig
     else:
         plt.close(fig)
+
+def plot_unraveled_trap_profiles(
+    forward_intensity: np.ndarray,
+    trap_coords: np.ndarray,
+    wx: float,
+    wy: float,
+    plot_path: Path | str
+):
+    """
+    Creates a horizontal waterfall plot of 1D X and Y trap profiles.
+    Traps are sorted by peak intensity and staggered horizontally.
+    Normalized globally to preserve relative peak intensities.
+    """
+    x_radius = max(2, int(np.ceil(2 * wx)))
+    y_radius = max(2, int(np.ceil(2 * wy)))
+    
+    x_span = np.arange(-x_radius, x_radius + 1)
+    y_span = np.arange(-y_radius, y_radius + 1)
+    
+    ff_int = np.asarray(forward_intensity)
+    h, w = ff_int.shape
+    
+    # 1. Pre-extract profiles and calculate local peaks
+    profiles_data = []
+    
+    for i, (cy, cx) in enumerate(trap_coords):
+        x_min, x_max = cx - x_radius, cx + x_radius + 1
+        y_min, y_max = cy - y_radius, cy + y_radius + 1
+        
+        # Only keep traps that don't clip the camera boundary
+        if 0 <= x_min and x_max <= w and 0 <= y_min and y_max <= h:
+            prof_x = ff_int[cy, x_min:x_max]
+            prof_y = ff_int[y_min:y_max, cx]
+            
+            # Find the max intensity of this specific trap
+            local_max = max(np.max(prof_x), np.max(prof_y))
+            
+            profiles_data.append({
+                "orig_idx": i,
+                "prof_x": prof_x,
+                "prof_y": prof_y,
+                "max_val": local_max
+            })
+            
+    if not profiles_data:
+        logger.warning("No valid profiles found to unravel. Skipping plot.")
+        return
+        
+    # 2. Sort traps by max height (ascending, so the "mountains" grow left-to-right)
+    profiles_data.sort(key=lambda item: item["max_val"])
+    
+    # Global max is now the last item in the sorted list
+    global_max = profiles_data[-1]["max_val"]
+    
+    # 3. Render the staggered plot
+    fig_prof, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    x_stagger_step = 0.5 * wx
+    y_stagger_step = 0.5 * wy
+    
+    for rank, item in enumerate(profiles_data):
+        # Top Row: X Profiles
+        prof_x_norm = item["prof_x"] / (global_max + 1e-12)
+        
+        # Stagger on the X-axis
+        x_shifted_x = x_span + (rank * x_stagger_step)
+        
+        ax1.plot(x_shifted_x, prof_x_norm, color="cyan", alpha=0.8, linewidth=1.0)
+        ax1.fill_between(x_shifted_x, 0, prof_x_norm, color="cyan", alpha=0.05)
+        
+        # Bottom Row: Y Profiles
+        prof_y_norm = item["prof_y"] / (global_max + 1e-12)
+        
+        # Stagger on the X-axis (even though it's a Y-profile, we spread them horizontally for the viewer)
+        x_shifted_y = y_span + (rank * y_stagger_step)
+        
+        ax2.plot(x_shifted_y, prof_y_norm, color="magenta", alpha=0.8, linewidth=1.0)
+        ax2.fill_between(x_shifted_y, 0, prof_y_norm, color="magenta", alpha=0.05)
+
+    ax1.set_title("Unraveled 1D X-Profiles (Sorted by Height, Staggered Horizontally)")
+    ax1.set_xlabel(rf"Local X Distance $+ (Rank \times {x_stagger_step:.2f})$")
+    ax1.set_ylabel("Globally Normalized Intensity")
+    ax1.set_ylim(bottom=0)
+    
+    ax2.set_title("Unraveled 1D Y-Profiles (Sorted by Height, Staggered Horizontally)")
+    ax2.set_xlabel(rf"Local Y Distance $+ (Rank \times {y_stagger_step:.2f})$")
+    ax2.set_ylabel("Globally Normalized Intensity")
+    ax2.set_ylim(bottom=0)
+    
+    fig_prof.tight_layout()
+    fig_prof.savefig(plot_path)
+    plt.close(fig_prof)

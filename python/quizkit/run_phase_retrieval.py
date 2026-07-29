@@ -21,7 +21,7 @@ from slmsuite.holography.algorithms import SpotHologram
 from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs
 from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
-from quizkit.plotting import plot_scalar_field, plot_stack_with_marginals
+from quizkit.plotting import plot_scalar_field, plot_stack_with_marginals, plot_unraveled_trap_profiles
 from quizkit.writers import write_hdf5
 
 import aim.ext.cleanup
@@ -334,7 +334,7 @@ class PerformanceMetrics(ConfigMixin):
         "trap_min": "Minimum integrated trap power",
         "trap_max": "Maximum integrated trap power",
         "psf_wx": "Best-fit forward PSF width (x-axis) [pixels]",
-        "psf_wy": "Best-fit forward PSF width (y-axis) [pixels]"
+        "psf_wy": "Best-fit forward PSF width (y-axis) [pixels]",
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
         "runtime": "Time taken to solve the phase retrieval problem [seconds]"
     }
@@ -744,6 +744,15 @@ class HologramExperimentSolver:
             ylabel=r"$k_m$ [knm]",
             fit_x=np.log(self.forward_psf_xprofile + 1e-12),
             fit_y=np.log(self.forward_psf_yprofile + 1e-12),
+        )
+
+        # TODO  
+        plot_unraveled_trap_profiles(
+            forward_intensity=self.forward_intensity,
+            trap_coords=np.array(self.exp.trap_coords),
+            wx=self.forward_psf_model_params[3],
+            wy=self.forward_psf_model_params[4],
+            plot_path=plot_dir / "trap_profiles_unraveled.pdf"
         )
 
         # NB forward intensity trap stack std. dev.
