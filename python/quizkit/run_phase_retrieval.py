@@ -333,6 +333,8 @@ class PerformanceMetrics(ConfigMixin):
         "trap_std": "Standard deviation of integrated trap power",
         "trap_min": "Minimum integrated trap power",
         "trap_max": "Maximum integrated trap power",
+        "psf_wx": "Best-fit forward PSF width (x-axis) [pixels]",
+        "psf_wy": "Best-fit forward PSF width (y-axis) [pixels]"
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
         "runtime": "Time taken to solve the phase retrieval problem [seconds]"
     }
@@ -351,6 +353,8 @@ class PerformanceMetrics(ConfigMixin):
     trap_std: float
     trap_min: float
     trap_max: float
+    psf_wx: float | None
+    psf_wy: float | None
     ghost_to_trap_med_ratio: float
     runtime: float | None
     trap_powers: np.ndarray = field(repr=False)
@@ -432,6 +436,12 @@ class PerformanceMetrics(ConfigMixin):
             array_center=array_center,
         )
 
+        if psf_params is not None:
+            _, _, _, wx, wy, _ = psf_params
+            psf_wx, psf_wy = float(wx), float(wy)
+        else:
+            psf_wx, psf_wy = None, None
+
         return cls(
             uniformity=uniformity,
             entropy=entropy,
@@ -449,6 +459,8 @@ class PerformanceMetrics(ConfigMixin):
             trap_max=trap_max,
             ghost_to_trap_med_ratio=ghost_to_trap_med_ratio,
             runtime=runtime,
+            psf_wx=psf_wx,
+            psf_wy=psf_wy,
             trap_powers=trap_powers,
         )
 
