@@ -338,3 +338,19 @@ class HologramExperiment:
             group_name="trap_array_perimeter_mask",
             dataset_name="trap_array_perimeter_mask",
         )
+        
+        if hasattr(self, "reciprocal_mask") and self.reciprocal_mask is not None:
+            write_hdf5(
+                filepath=hdf5_path,
+                data=self.reciprocal_mask,
+                group_name="reciprocal_mask",
+                dataset_name="reciprocal_mask",
+            )
+            
+        if hasattr(self, "reciprocal_coords") and self.reciprocal_coords is not None:
+            write_hdf5(
+                filepath=hdf5_path,
+                data=self.reciprocal_coords,
+                group_name="reciprocal_coords",
+                dataset_name="reciprocal_coords",
+            )
