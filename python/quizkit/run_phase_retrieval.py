@@ -1015,6 +1015,24 @@ class HologramExperimentSolver:
             ylabel=r"$k_m$ [knm]",
         )
 
+        stack_std_similar_traps = reduce_stack_similar_crops(
+            self.forward_intensity,
+            self.exp.trap_coords,
+            self.stack_h,
+            self.stack_w,
+            reducer=jnp.std,
+        )
+
+        plot_scalar_field(
+            plot_path=plot_dir / "trap_stack_forward_intensity_std.pdf",
+            field=np.log(stack_std_similar_traps + 1e-12),
+            cmap="viridis",
+            title="trap stack: std. dev",
+            cbar_label="ln. std dev [a.u.]",
+            xlabel=r"$k_n$ [knm]",
+            ylabel=r"$k_m$ [knm]",
+        )
+
         x_min, x_max, y_min, y_max = self.target_extent
         ff_int = self.forward_intensity
 
