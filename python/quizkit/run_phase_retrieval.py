@@ -169,7 +169,7 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     """
     Fits a 2D intensity stack to a chosen PSF model, returning parameters and 1D marginals.
     Models support independent (asymmetric) wx and wy.
-    
+
     Supported models: 'sinc2', 'gaussian', 'lorentzian', 'moffat'
     """
     h, w = z_data.shape
@@ -178,60 +178,62 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
         x_val, y_val = coords
         wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        sinc2_x = np.sinc((x_val - x0) / wx)**2
-        sinc2_y = np.sinc((y_val - y0) / wy)**2
+        sinc2_x = np.sinc((x_val - x0) / wx) ** 2
+        sinc2_y = np.sinc((y_val - y0) / wy) ** 2
         return I0 * sinc2_x * sinc2_y + bg
 
     def gaussian_2d(coords, I0, x0, y0, wx, wy, bg):
         x_val, y_val = coords
         wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        r2 = ((x_val - x0) / wx)**2 + ((y_val - y0) / wy)**2
+        r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
         return I0 * np.exp(-0.5 * r2) + bg
 
     def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
         # Separable 2D Lorentzian (better matches rectangular aperture cross-wings)
         x_val, y_val = coords
         wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        lx = 1.0 / (1.0 + ((x_val - x0) / wx)**2)
-        ly = 1.0 / (1.0 + ((y_val - y0) / wy)**2)
+        lx = 1.0 / (1.0 + ((x_val - x0) / wx) ** 2)
+        ly = 1.0 / (1.0 + ((y_val - y0) / wy) ** 2)
         return I0 * lx * ly + bg
 
     def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
         # Elliptical Moffat profile (beta=2.5 is standard for optical turbulence/scattering)
         x_val, y_val = coords
         wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
-        r2 = ((x_val - x0) / wx)**2 + ((y_val - y0) / wy)**2
-        return I0 * (1.0 + r2)**(-2.5) + bg
+        r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
+        return I0 * (1.0 + r2) ** (-2.5) + bg
 
     models = {
         "sinc2": sinc2_2d,
         "gaussian": gaussian_2d,
         "lorentzian": lorentzian_2d,
-        "moffat": moffat_2d
+        "moffat": moffat_2d,
     }
 
     if model not in models:
-        raise ValueError(f"Unknown PSF model '{model}'. Available: {list(models.keys())}")
-        
+        raise ValueError(
+            f"Unknown PSF model '{model}'. Available: {list(models.keys())}"
+        )
+
     fit_func = models[model]
 
     core_radius = 10
-    
+
     y_slice = slice(max(0, cy - core_radius), min(h, cy + core_radius + 1))
     x_slice = slice(max(0, cx - core_radius), min(w, cx + core_radius + 1))
-    
+
     z_fit = z_data[y_slice, x_slice]
-    
+
     y_coords = np.arange(h)[y_slice]
     x_coords = np.arange(w)[x_slice]
     X_fit, Y_fit = np.meshgrid(x_coords, y_coords)
-    
+
     bg_guess = 0.0
     I0_guess = max(0.0, np.max(z_fit) - bg_guess)
     x0_guess, y0_guess = float(cx), float(cy)
-    
+
     # NB slm aperture expected to produce a spot with a first-null width of ~1 pixel
-    wx_guess, wy_guess = 1.0, 1.0 
+    wx_guess, wy_guess = 1.0, 1.0
 
     coords_fit = (X_fit.ravel(), Y_fit.ravel())
 
@@ -243,10 +245,10 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
         # Wrap the function to hide the 'bg' parameter from the optimizer
         def fit_func_no_bg(coords, _I0, _x0, _y0, _wx, _wy):
             return fit_func(coords, _I0, _x0, _y0, _wx, _wy, 0.0)
-            
+
         p0 = [I0_guess, x0_guess, y0_guess, wx_guess, wy_guess]
         popt_5, _ = curve_fit(fit_func_no_bg, coords_fit, z_fit.ravel(), p0=p0)
-        
+
         I0, x0, y0, wx, wy = popt_5
         bg = 0.0
         # Reconstruct standard 6-parameter tuple for return signature
@@ -254,7 +256,7 @@ def fit_forward_psf(z_data, model="gaussian", fit_background=True):
 
     x_line = np.arange(w)
     y_line = np.arange(h)
-    
+
     # Always evaluate marginals cleanly without the background component
     fit_x_no_bg = fit_func((x_line, np.full_like(x_line, y0)), I0, x0, y0, wx, wy, 0.0)
     fit_y_no_bg = fit_func((np.full_like(y_line, x0), y_line), I0, x0, y0, wx, wy, 0.0)
@@ -311,7 +313,7 @@ class PerformanceMetrics(ConfigMixin):
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
         trap_array_perimeter_mask = np.asarray(trap_array_perimeter_mask, dtype=bool)
-        
+
         flat_forward_intensity = ff_int.ravel()
         flat_trap_labels = np.asarray(trap_labels).ravel()
         total_power = float(np.sum(flat_forward_intensity))
@@ -408,7 +410,9 @@ class PerformanceMetrics(ConfigMixin):
             + " \\\\"
         )
 
-        metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
+        metric_names = [
+            k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"
+        ]
 
         rows = []
         for m_name in metric_names:
@@ -594,7 +598,7 @@ class HologramExperimentSolver:
 
         plot_stack_with_marginals(
             plot_path=plot_dir / "trap_stack_target_intensity.pdf",
-            field=target_stack_mean, # Linear scale usually better for pure target
+            field=target_stack_mean,  # Linear scale usually better for pure target
             cmap="viridis",
             title="target trap stack: mean",
             cbar_label="Intensity [a.u.]",
@@ -603,20 +607,23 @@ class HologramExperimentSolver:
         )
 
         # NB forward intensity trap stack
-        forward_stack_mean = np.asarray(reduce_stack_similar_crops(
-            self.forward_intensity,
-            self.exp.trap_coords,
-            self.stack_h,
-            self.stack_w,
-            reducer=jnp.mean,
-        ))
-        
+        forward_stack_mean = np.asarray(
+            reduce_stack_similar_crops(
+                self.forward_intensity,
+                self.exp.trap_coords,
+                self.stack_h,
+                self.stack_w,
+                reducer=jnp.mean,
+            )
+        )
 
         # TODO
-        _, fit_x, fit_y = fit_forward_psf(forward_stack_mean, model="gaussian", fit_background=False)
+        _, fit_x, fit_y = fit_forward_psf(
+            forward_stack_mean, model="gaussian", fit_background=False
+        )
 
         # NB
-        # LATEST_RUN=$(ls -td results/run_* | head -n 1) && LATEST_SOLVER=$(ls -td "$LATEST_RUN"/phase_retrieval/*/ | head -n 1) && echo "${LATEST_SOLVER}plots/trap_stack_forward_intensity.pdf" 
+        # LATEST_RUN=$(ls -td results/run_* | head -n 1) && LATEST_SOLVER=$(ls -td "$LATEST_RUN"/phase_retrieval/*/ | head -n 1) && echo "${LATEST_SOLVER}plots/trap_stack_forward_intensity.pdf"
 
         plot_stack_with_marginals(
             plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
@@ -627,7 +634,7 @@ class HologramExperimentSolver:
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
             fit_x=np.log(fit_x + 1e-12),
-            fit_y=np.log(fit_y + 1e-12)
+            fit_y=np.log(fit_y + 1e-12),
         )
 
         # NB forward intensity trap stack std. dev.
@@ -756,8 +763,8 @@ class HologramExperimentSolver:
 
 
 def run_phase_retrieval():
-    method="GD"
-    solver_backend="jax"  # {"slm_suite", "jax"}
+    method = "GD"
+    solver_backend = "jax"  # {"slm_suite", "jax"}
     num_random_seeds = 1
     slm_shape = (1200, 1920)  # (height, width) in pixels,
 
@@ -792,7 +799,7 @@ def run_phase_retrieval():
 
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method=method, # {"GS", "GD", "AA", "HIO"}
+                    method=method,  # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,

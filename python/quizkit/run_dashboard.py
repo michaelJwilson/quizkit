@@ -25,7 +25,7 @@ body, .bk, .bk-root, .panel-title {
 }
 """
 
-pn.extension('tabulator', raw_css=[custom_css], sizing_mode="stretch_width")
+pn.extension("tabulator", raw_css=[custom_css], sizing_mode="stretch_width")
 
 """
 panel serve python/quizkit/run_dashboard.py --show
@@ -206,30 +206,39 @@ else:
     @pn.depends(w_x_axis, w_y_axis, w_color_by, w_trap_filter, w_method_filter)
     def plot_scatter(x, y, color_col, traps, methods):
         filtered = get_filtered_df(traps, methods)
-        if filtered.is_empty(): return pn.pane.Markdown("No data.")
-        
+        if filtered.is_empty():
+            return pn.pane.Markdown("No data.")
+
         return filtered.hvplot.scatter(
-            x=x, y=y, by=color_col, 
-            size=150, alpha=0.85, 
-            hover_cols=["hash", "random_seed"], 
-            cmap="Category10",           # Modern categorical colors
-            line_color="white",          # White borders on scatter points
+            x=x,
+            y=y,
+            by=color_col,
+            size=150,
+            alpha=0.85,
+            hover_cols=["hash", "random_seed"],
+            cmap="Category10",  # Modern categorical colors
+            line_color="white",  # White borders on scatter points
             line_width=0.5,
-            grid=False,                  # Remove grid for a cleaner look
-            responsive=True, min_height=380
+            grid=False,  # Remove grid for a cleaner look
+            responsive=True,
+            min_height=380,
         )
 
     @pn.depends(w_x_axis, w_color_by, w_trap_filter, w_method_filter)
     def plot_histogram(x, color_col, traps, methods):
         filtered = get_filtered_df(traps, methods)
-        if filtered.is_empty(): return pn.pane.Markdown("No data.")
-            
+        if filtered.is_empty():
+            return pn.pane.Markdown("No data.")
+
         return filtered.hvplot.hist(
-            y=x, by=color_col, 
-            alpha=0.7, bins=30, 
-            cmap="Category10", 
-            line_width=0,                # Remove bin borders
-            responsive=True, min_height=380
+            y=x,
+            by=color_col,
+            alpha=0.7,
+            bins=30,
+            cmap="Category10",
+            line_width=0,  # Remove bin borders
+            responsive=True,
+            min_height=380,
         )
 
     # --- Reactive Tabulator Table ---
@@ -259,22 +268,26 @@ else:
     plot_tabs = pn.Tabs(
         ("Scatter Plot", plot_scatter),
         ("1D Distribution", plot_histogram),
-        dynamic=True, # Renders only the active tab to save memory
+        dynamic=True,  # Renders only the active tab to save memory
         sizing_mode="stretch_both",
     )
 
     # 2. Wrap the tabs in a single styling Card
-    tabs_card = pn.Card(plot_tabs, title="Metric Exploration", margin=10, min_height=450, sizing_mode="stretch_both")
-    
+    tabs_card = pn.Card(
+        plot_tabs,
+        title="Metric Exploration",
+        margin=10,
+        min_height=450,
+        sizing_mode="stretch_both",
+    )
+
     # 3. Table Card
-    table_card = pn.Card(filtered_table, title="Run Data", margin=10, sizing_mode="stretch_width")
+    table_card = pn.Card(
+        filtered_table, title="Run Data", margin=10, sizing_mode="stretch_width"
+    )
 
     # 4. Main UI Column
-    main_content = pn.Column(
-        kpi_indicators,
-        tabs_card,
-        table_card
-    )
+    main_content = pn.Column(kpi_indicators, tabs_card, table_card)
 
     template = pn.template.FastListTemplate(
         title="Quizkit::phase retrieval",
@@ -283,10 +296,10 @@ else:
         theme="dark",
         font="Inter",
         # Modern Dark Slate Theme (Tailwind Inspired)
-        background_color="#111827",      # Deep gray background (not pure black)
-        header_background="#1F2937",     # Lighter gray for the header
-        accent_base_color="#8B5CF6",     # Vibrant violet accent for sliders/toggles
-        header_color="#F9FAFB",          # Off-white header text
+        background_color="#111827",  # Deep gray background (not pure black)
+        header_background="#1F2937",  # Lighter gray for the header
+        accent_base_color="#8B5CF6",  # Vibrant violet accent for sliders/toggles
+        header_color="#F9FAFB",  # Off-white header text
         sidebar_width=320,
     )
 

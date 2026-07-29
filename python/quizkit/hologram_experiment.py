@@ -40,7 +40,9 @@ def get_gaussian_slm_illumination(slm_shape):
     return np.exp(-(xx**2 + yy**2) / beam_waist_px**2).astype(np.float32)
 
 
-def get_trap_array_perimeter_mask(slm_shape, array_shape, array_pitch, array_center, pad=25):
+def get_trap_array_perimeter_mask(
+    slm_shape, array_shape, array_pitch, array_center, pad=25
+):
     if array_center is not None:
         center_x, center_y = array_center[0], array_center[1]
     else:
@@ -59,26 +61,31 @@ def get_trap_array_perimeter_mask(slm_shape, array_shape, array_pitch, array_cen
     y_max_clamped = min(slm_shape[0], y_max)
 
     trap_array_perimeter_mask = np.zeros(slm_shape, dtype=bool)
-    trap_array_perimeter_mask[y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped] = True
+    trap_array_perimeter_mask[
+        y_min_clamped:y_max_clamped, x_min_clamped:x_max_clamped
+    ] = True
 
     return trap_array_perimeter_mask
 
+
 # TODO
-def get_dual_trap_array_mask(target_intensity: np.ndarray, array_pitch: Tuple[int, int]) -> np.ndarray:
+def get_dual_trap_array_mask(
+    target_intensity: np.ndarray, array_pitch: Tuple[int, int]
+) -> np.ndarray:
     target_mask = target_intensity > 0
     if not np.any(target_mask):
         return np.zeros_like(target_mask, dtype=bool)
 
     dy, dx = int(array_pitch[0] // 2), int(array_pitch[1] // 2)
-    
+
     shifted_mask = np.roll(target_mask, shift=(dy, dx), axis=(0, 1))
 
-    y_coords, x_coords = np.where(target_mask)    
+    y_coords, x_coords = np.where(target_mask)
     y_min, y_max = y_coords.min(), y_coords.max()
     x_min, x_max = x_coords.min(), x_coords.max()
 
     perimeter_mask = np.zeros_like(target_mask, dtype=bool)
-    perimeter_mask[y_min:y_max+1, x_min:x_max+1] = True
+    perimeter_mask[y_min : y_max + 1, x_min : x_max + 1] = True
 
     dual_mask = shifted_mask & perimeter_mask & ~target_mask
 
@@ -221,7 +228,9 @@ class HologramExperiment:
         with h5py.File(h5_path, "r") as f:
             obj.slm_illumination = f["slm/slm_illumination"][:]
             obj.target = f["target/target"][:]
-            obj.trap_array_perimeter_mask = f["trap_array_perimeter_mask/trap_array_perimeter_mask"][:]
+            obj.trap_array_perimeter_mask = f[
+                "trap_array_perimeter_mask/trap_array_perimeter_mask"
+            ][:]
             obj.dual_mask = f["dual_mask/dual_mask"][:]
             # obj.dual_coords = f["dual_coords/dual_coords"][:]
         obj.slm_illumination.flags.writeable = False
@@ -338,7 +347,7 @@ class HologramExperiment:
             group_name="trap_array_perimeter_mask",
             dataset_name="trap_array_perimeter_mask",
         )
-        
+
         if hasattr(self, "dual_mask") and self.dual_mask is not None:
             write_hdf5(
                 filepath=hdf5_path,
@@ -346,7 +355,7 @@ class HologramExperiment:
                 group_name="dual_mask",
                 dataset_name="dual_mask",
             )
-            
+
         if hasattr(self, "dual_coords") and self.dual_coords is not None:
             write_hdf5(
                 filepath=hdf5_path,
