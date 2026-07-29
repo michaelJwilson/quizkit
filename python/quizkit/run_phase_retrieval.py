@@ -279,10 +279,7 @@ def calculate_diffuse_efficiencies(
     
     h, w = forward_intensity.shape
     total_power = float(np.sum(forward_intensity))
-    
-    # -------------------------------------------------------------------------
-    # 1. Diffuse Trap Efficiency (efficiency_diffuse)
-    # -------------------------------------------------------------------------
+
     # TODO
     stack_h, stack_w = 50, 50
     ky, kx = np.arange(-stack_h // 2, stack_h // 2), np.arange(-stack_w // 2, stack_w // 2)
@@ -290,11 +287,15 @@ def calculate_diffuse_efficiencies(
     
     psf_kernel = fit_func((X, Y), 1.0, 0.0, 0.0, wx, wy, 0.0)
     
-    diffuse_target = fftconvolve(target, psf_kernel, mode='same')
+    target_sum = np.sum(target)
+    normalized_target = target * (total_power / target_sum) if target_sum > 0 else target
+
+    diffuse_target = fftconvolve(normalized_target, psf_kernel, mode='same')
     
     # TODO
     diffuse_target = np.clip(diffuse_target, 0.0, 1.0)
-    
+
+    efficiency = float(np.sum(forward_intensity * normalized_target) / (total_power + 1e-12))
     efficiency_diffuse = float(np.sum(forward_intensity * diffuse_target) / (total_power + 1e-12))
     
     # -------------------------------------------------------------------------
@@ -307,12 +308,12 @@ def calculate_diffuse_efficiencies(
         cy, cx = h // 2, w // 2
 
     Y_full, X_full = np.ogrid[:h, :w]
-    
-    zeroth_mask = fit_func((X_full, Y_full), 1.0, cx, cy, wx, wy, 0.0)
-    
+
+    # TODO
+    zeroth_mask = fit_func((X_full, Y_full), 1.0, cx, cy, wx, wy, 0.0)    
     efficiency_zeroth = float(np.sum(forward_intensity * zeroth_mask) / (total_power + 1e-12))
     
-    return efficiency_diffuse, efficiency_zeroth
+    return efficiency, efficiency_diffuse, efficiency_zeroth
 
 
 @dataclass
@@ -410,7 +411,8 @@ class PerformanceMetrics(ConfigMixin):
         trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
-        efficiency_diffuse, efficiency_zeroth = calculate_diffuse_efficiencies(
+        # TODO HACK? _, ...
+        efficiency, efficiency_diffuse, efficiency_zeroth = calculate_diffuse_efficiencies(
             forward_intensity=ff_int,
             target=target_int,
             psf_model=psf_model,
