@@ -708,7 +708,6 @@ class PerformanceMetrics(ConfigMixin):
 """
 @dataclass
 class PerformanceMetrics(ConfigMixin):
-    # Define descriptions as a class variable so it belongs to the class, not instances.
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
         "efficiency": "Fraction of total power within target trap regions",
         "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
@@ -830,16 +829,6 @@ class PerformanceMetrics(ConfigMixin):
         caption: str = "Computed performance metrics for the optimized SLM phase.",
         label: str = "tab:hologram_metrics",
     ) -> None:
-        """
-        Generates and writes a LaTeX table comparing performance metrics across solver runs.
-
-        Args:
-            filepath: The destination path for the .tex file.
-            metrics_by_run: Dictionary mapping run names to their metric dictionaries.
-                            e.g., {"gs": dict, "wgs": dict}.
-            caption: Table caption string.
-            label: Table LaTeX label.
-        """
         run_keys = list(metrics_by_run.keys())
         if not run_keys:
             logger.warning("No metrics provided to write_tex_table.")
@@ -847,19 +836,15 @@ class PerformanceMetrics(ConfigMixin):
 
         n_runs = len(run_keys)
 
-        # 1. Determine Column Headers and Tabular Alignment
         headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
         c_cols = "c" * n_runs
         tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
 
-        # 2. Build Header Row
         header_row = (
             " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
             + " \\\\"
         )
 
-        # 3. Build Data Rows
-        # Grab the metric names from the first run (excluding the raw array)
         metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
 
         rows = []
@@ -878,7 +863,6 @@ class PerformanceMetrics(ConfigMixin):
                 else:
                     row_parts.append(str(val))
 
-            # Fetch description from the class variable
             desc = cls._DESCRIPTIONS.get(m_name, "")
             row_parts.append(desc)
             rows.append(" & ".join(row_parts) + " \\\\")
@@ -1056,7 +1040,7 @@ class HologramExperimentSolver:
         )
 
         # NB forward intensity trap stack
-        stack_mean_similar_traps = reduce_stack_similar_crops(
+        forward_stack_mean = reduce_stack_similar_crops(
             self.forward_intensity,
             self.exp.trap_coords,
             self.stack_h,
@@ -1064,18 +1048,18 @@ class HologramExperimentSolver:
             reducer=jnp.mean,
         )
 
-        plot_scalar_field(
+        plot_stack_with_marginals(
             plot_path=plot_dir / "trap_stack_forward_intensity.pdf",
-            field=np.log(stack_mean_similar_traps + 1e-12),
+            field=np.log(forward_stack_mean + 1e-12),
             cmap="inferno",
-            title="trap stack: mean",
-            cbar_label="ln. intensity [a.u.]",
+            title="forward trap stack: mean",
+            cbar_label="ln. ntensity [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
         )
 
         # NB forward intensity trap stack std. dev.
-        stack_std_similar_traps = reduce_stack_similar_crops(
+        forward_stack_std = reduce_stack_similar_crops(
             self.forward_intensity,
             self.exp.trap_coords,
             self.stack_h,
@@ -1083,11 +1067,11 @@ class HologramExperimentSolver:
             reducer=jnp.std,
         )
 
-        plot_scalar_field(
+        plot_stack_with_marginals(
             plot_path=plot_dir / "trap_stack_forward_intensity_std.pdf",
-            field=np.log(stack_std_similar_traps + 1e-12),
-            cmap="viridis",
-            title="trap stack: std. dev",
+            field=np.log(forward_stack_std + 1e-12),
+            cmap="inferno",
+            title="forward trap stack: std. dev.",
             cbar_label="ln. std dev [a.u.]",
             xlabel=r"$k_n$ [knm]",
             ylabel=r"$k_m$ [knm]",
