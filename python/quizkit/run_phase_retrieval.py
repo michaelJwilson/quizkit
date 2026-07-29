@@ -333,6 +333,7 @@ class PerformanceMetrics(ConfigMixin):
         "trap_min": "Minimum integrated trap power",
         "trap_max": "Maximum integrated trap power",
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
+        "runtime": "Time taken to solve the phase retrieval problem [seconds]"
     }
 
     uniformity: float
@@ -349,6 +350,7 @@ class PerformanceMetrics(ConfigMixin):
     trap_min: float
     trap_max: float
     ghost_to_trap_med_ratio: float
+    runtime: float | None
     trap_powers: np.ndarray = field(repr=False)
 
     @classmethod
@@ -364,6 +366,7 @@ class PerformanceMetrics(ConfigMixin):
         psf_model: str | None = None,
         psf_params: tuple | None = None,
         array_center: tuple[int, int] | None = None,
+        runtime: float | None = None
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
@@ -387,7 +390,7 @@ class PerformanceMetrics(ConfigMixin):
         trap_std = float(np.std(trap_powers))
 
         total_trap_perimeter_power = float(np.sum(ff_int[trap_array_perimeter_mask]))
-        total_trap_dual_power = float(np.sum(ff_int[dual_mask]))
+        # total_trap_dual_power = float(np.sum(ff_int[dual_mask]))
 
         sig_power = float(np.sum(trap_powers))
         bg_power = total_power - sig_power
@@ -437,6 +440,7 @@ class PerformanceMetrics(ConfigMixin):
             trap_min=trap_min,
             trap_max=trap_max,
             ghost_to_trap_med_ratio=ghost_to_trap_med_ratio,
+            runtime=runtime,
             trap_powers=trap_powers,
         )
 
@@ -453,6 +457,7 @@ class PerformanceMetrics(ConfigMixin):
             psf_model=solver.forward_psf_model,
             psf_params=solver.forward_psf_model_params,
             array_center=solver.exp.run_config.array_center,
+            runtime=solver.config.runtime,
         )
     
     @classmethod
@@ -576,10 +581,10 @@ class HologramExperimentSolver:
         elif self.backend_type == "jax":
             self.backend.optimize()
 
-        self.config.solver_runtime = time.time() - start_time
+        self.config.runtime = time.time() - start_time
 
         logger.info(
-            f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
+            f"Solved phase retrieval problem in {self.config.runtime:.2f}s"
         )
 
         forward_stack_mean = np.asarray(
