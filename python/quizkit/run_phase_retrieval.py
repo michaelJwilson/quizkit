@@ -927,7 +927,7 @@ class HologramExperimentSolver:
 
     def optimize(self):
         logger.info(
-            f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations."
+            f"Solving the phase retrieval problem with {self.config.method} & {self.config.maxiter} iterations."
         )
         start_time = time.time()
 
@@ -947,32 +947,40 @@ class HologramExperimentSolver:
             f"Solved phase retrieval problem in {self.config.solver_runtime:.2f}s"
         )
 
+    # TODO BUG
     def update_aim(self, experiment_name: str):
-        with Run(experiment=experiment_name) as run:
-            run["hparams"] = {
-                "trap": self.exp.run_config.trap_config.to_dict(),
-                "run": self.exp.run_config.to_dict(),
-                "solver": self.config.to_dict(),
-            }
+        if not hasattr(self.backend, "history"):
+            logger.warning(
+                "Backend does not support history attribute. Skipping aim metric tracking."
+            )
 
-            if hasattr(self.backend, "history"):
-                for step_idx in range(self.config.maxiter):
-                    for metric_name, metric_array in self.backend.history.items():
-                        run.track(
-                            float(metric_array[step_idx]),
-                            name=metric_name,
-                            step=step_idx,
-                            context={"subset": "Metrics"},
-                        )
-            else:
-                logger.warning(
-                    "Backend does not support history attribute. Skipping aim metric tracking."
-                )
+        run = Run(experiment=experiment_name)
 
-            # TODO
-            # fig = plot_scalar_field(..., return_fig=True)
-            # run.track(Figure(fig), name="slm_phase", context={"type": "final_state"})
-            # plt.close(fig)
+        # TODO Run Params
+        run["hparams"] = {
+            "trap": self.exp.run_config.trap_config.to_dict(),
+            "run": self.exp.run_config.to_dict(),
+            "solver": self.config.to_dict(),
+        }
+
+        if hasattr(self.backend, "history"):
+            for step_idx in range(self.config.maxiter):
+                for metric_name, metric_array in self.backend.history.items():
+                    run.track(
+                        float(metric_array[step_idx]),
+                        name=metric_name,
+                        step=step_idx,
+                        context={"subset": "Metrics"},
+                    )
+        else:
+            logger.warning(
+                "Backend does not support history attribute. Skipping aim metric tracking."
+            )
+
+        # TODO
+        # fig = plot_scalar_field(..., return_fig=True)
+        # run.track(Figure(fig), name="slm_phase", context={"type": "final_state"})
+        # plt.close(fig)
 
     @property
     def target_intensity(self):
