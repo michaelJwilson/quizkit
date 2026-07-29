@@ -1185,6 +1185,7 @@ class HologramExperimentSolver:
 
 def run_phase_retrieval():
     slm_shape = (1200, 1920)  # (height, width) in pixels,
+    num_random_seeds = 1
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
@@ -1212,7 +1213,9 @@ def run_phase_retrieval():
         exp.plot(base_dir="./results")
         exp.write_h5(base_dir="./results")
 
-        for random_seed in np.arange(42, 45 + 1, 1, dtype=int):
+        for random_seed in np.arange(num_random_seeds):
+            random_seed = int(42 + random_seed)
+
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
                     method="GD", # {"GS", "GD", "AA", "HIO"}
@@ -1241,7 +1244,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                solver.update_aim(experiment_name=solver_config.hash)
+                # solver.update_aim(experiment_name=solver_config.hash)
 
     logger.info(f"Done.")
 
