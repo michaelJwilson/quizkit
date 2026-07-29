@@ -782,8 +782,6 @@ class HologramExperimentSolver:
             return
 
         run = Run(experiment=experiment_name)
-
-        # Flatten configs for Aim hparams
         run["hparams"] = {
             "run_config": self.exp.run_config.to_dict(),
             "solver_config": self.config.to_dict(),
@@ -1000,7 +998,7 @@ def run_phase_retrieval():
 
             write_performance_metrics_tex(
                 filepath=exp._get_run_dir("./results")
-                / f"phase_retrieval/{solver.config.timestamp}"
+                / f"phase_retrieval/{solver.config.hash}"
                 / "performance_metrics.tex",
                 metrics_by_run={solver.config.method: metrics.to_dict()},
                 caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
