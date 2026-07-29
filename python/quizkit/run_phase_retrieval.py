@@ -163,33 +163,31 @@ def extract_background_artifacts(
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
+        "trap_uniformity": "Michelson uniformity of integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
         "pearson": "Pearson correlation of forward intensity and target intensity",
-        "trap_cv": "Coefficient of variation of integrated trap powers",
         "trap_med": "Median integrated trap power",
         "trap_mean": "Mean integrated trap power",
         "trap_std": "Standard deviation of integrated trap power",
         "trap_min": "Minimum integrated trap power",
         "trap_max": "Maximum integrated trap power",
-        "trap_uniformity": "Michelson uniformity of integrated trap powers",
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
     }
 
+    trap_uniformity: float
     efficiency: float
     stray_light_fraction: float
     efficiency_perimeter: float
     efficiency_dual: float
     pearson: float
-    trap_cv: float
     trap_med: float
     trap_mean: float
     trap_std: float
     trap_min: float
     trap_max: float
-    trap_uniformity: float
     ghost_to_trap_med_ratio: float
     trap_powers: np.ndarray = field(repr=False)
 
@@ -223,8 +221,6 @@ class PerformanceMetrics(ConfigMixin):
         trap_mean = float(np.mean(trap_powers))
         trap_std = float(np.std(trap_powers))
 
-        trap_cv = float(trap_std / (trap_mean + 1e-12))
-
         total_power = float(np.sum(flat_forward_intensity))
         total_trap_perimeter_power = float(np.sum(ff_int[trap_array_perimeter_mask]))
         total_trap_dual_power = float(np.sum(ff_int[dual_mask]))
@@ -249,21 +245,20 @@ class PerformanceMetrics(ConfigMixin):
         pearson = float(numerator / (denominator + 1e-12))
 
         trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
-        ghost_to_trap_med_ratio=max_bg / (trap_med + 1e-12),
+        ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
         return cls(
+            trap_uniformity=trap_uniformity,
             efficiency=sig_power / total_power,
             stray_light_fraction=bg_power / total_power,
             efficiency_perimeter=efficiency_perimeter,
             efficiency_dual=efficiency_dual,
             pearson=pearson,
-            trap_cv=trap_cv,
             trap_med=trap_med,
             trap_mean=trap_mean,
             trap_std=trap_std,
             trap_min=trap_min,
             trap_max=trap_max,
-            trap_uniformity=trap_uniformity,
             ghost_to_trap_med_ratio=ghost_to_trap_med_ratio,
             trap_powers=trap_powers,
         )
