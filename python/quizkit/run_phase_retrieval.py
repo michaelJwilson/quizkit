@@ -319,13 +319,13 @@ def calculate_diffuse_efficiencies(
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
-        "trap_uniformity": "Michelson uniformity of integrated trap powers",
+        "uniformity": "Michelson uniformity of integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
-        "efficiency_diffuse": "Fraction of forward power convolved with best-fit trap sinc^2 envelope",
+        "efficiency_diffuse": "Fraction of forward power convolved with best-fit forward psf",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
-        "efficiency_zeroth": "Fraction of forward power located at the (diffuse) zeroth order",
+        "efficiency_zeroth": "Fraction of forward power located at the diffuse zeroth order",
         "pearson": "Pearson correlation of forward intensity and target intensity",
         "trap_med": "Median integrated trap power",
         "trap_mean": "Mean integrated trap power",
@@ -335,7 +335,7 @@ class PerformanceMetrics(ConfigMixin):
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
     }
 
-    trap_uniformity: float
+    uniformity: float
     efficiency: float
     efficiency_diffuse: float
     stray_light_fraction: float
@@ -407,7 +407,7 @@ class PerformanceMetrics(ConfigMixin):
         denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
         pearson = float(numerator / (denominator + 1e-12))
 
-        trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
+        uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
         efficiency = sig_power / total_power
@@ -422,7 +422,7 @@ class PerformanceMetrics(ConfigMixin):
         )
 
         return cls(
-            trap_uniformity=trap_uniformity,
+            uniformity=uniformity,
             efficiency=efficiency,
             efficiency_diffuse=efficiency_diffuse,
             efficiency_zeroth=efficiency_zeroth,
