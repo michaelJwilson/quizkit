@@ -20,6 +20,13 @@ from slmsuite.holography.algorithms import SpotHologram
 from pathlib import Path
 from functools import cached_property
 from quizkit.writers import write_hdf5
+from aim import Run
+
+import atexit
+import aim.ext.cleanup
+
+# TODO HACK aim thread issue for python 3.12 (TBC)
+atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 """
 GS algorithm application via slm suite, see
@@ -749,49 +756,80 @@ class HologramExperimentSolver:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):
         self.exp = experiment
         self.config = config
-        self.backend = None
+        self.backend_type = (self.config.solver_backend or "slm_suite").lower()
 
         # TODO
         self.stack_h = 50
         self.stack_w = 50
 
         rng = np.random.default_rng(seed=self.config.random_seed)
-        phases = rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape)
+        self.init_phases = rng.uniform(-np.pi, np.pi, size=self.exp.run_config.slm_shape)
 
-        self.__hologram = SpotHologram.make_rectangular_array(
-            self.exp.run_config.slm_shape,
-            array_shape=self.exp.run_config.array_shape,
-            array_pitch=self.exp.run_config.array_pitch,
-            basis="knm",
-            amp=self.exp.slm_illumination.copy(),
-            array_center=self.exp.run_config.array_center,
-            phase=phases,
-        )
+        if self.backend_type == "slm_suite":
+            self.backend = SpotHologram.make_rectangular_array(
+                self.exp.run_config.slm_shape,
+                array_shape=self.exp.run_config.array_shape,
+                array_pitch=self.exp.run_config.array_pitch,
+                basis="knm",
+                amp=self.exp.slm_illumination.copy(),
+                array_center=self.exp.run_config.array_center,
+                phase=self.init_phases,
+            )
 
-        assert np.allclose(self.exp.target, self.__hologram.target)
+            # TODO
+            # assert np.allclose(self.exp.target, self.__hologram.target)
+
+        elif self.backend_type == "jax":
+            # self.backend = JaxHologramBackend(self.exp, self.config)
+            raise NotImplementedError()
+        else:
+            raise ValueError(f"Unknown backend: {self.backend_type}")
 
     def optimize(self):
         logger.info(
             f"Solving the phase retrieval problemm with {self.config.method} & {self.config.maxiter} iterations."
         )
-
         start_time = time.time()
 
-        if self.backend is None:
-            self.__hologram.optimize(
+        if self.backend_type == "slm_suite":
+            self.backend.optimize(
                 method=self.config.method,
                 maxiter=self.config.maxiter,
                 stat_groups=["computational_spot"],
                 verbose=False,
             )
-        else:
-            self.backend.optimize(
-                method=self.config.method,
-                maxiter=self.config.maxiter,
-                verbose=False,
-            )
+        elif self.backend_type == "jax":
+            self.backend.optimize()
 
-        self.config["solver_runtime"] = time.time() - start_time
+        self.config.solver_runtime = time.time() - start_time
+
+    def log_to_aim(self, experiment_name: str = "phase_retrieval_sweep"):
+        """Pushes tracked JAX history metrics to Aim."""
+        if self.backend_type != "jax":
+            logger.warning("Aim logging currently only supports the JAX backend history.")
+            return
+
+        run = Run(experiment=experiment_name)
+        
+        # Flatten configs for Aim hparams
+        run["hparams"] = {
+            "run_config": self.exp.run_config.to_dict(),
+            "solver_config": self.config.to_dict()
+        }
+
+        history = self.backend.history
+        
+        for step_idx in range(self.config.maxiter):
+            for metric_name, metric_array in history.items():
+                run.track(
+                    metric_array[step_idx].item(),
+                    name=metric_name,
+                    step=step_idx,
+                    context={"subset": "Metrics"}
+                )
+        
+        run.close()
+        logger.info(f"Aim run closed for {self.config.hash}")
 
     @property
     def target_intensity(self):
@@ -803,11 +841,15 @@ class HologramExperimentSolver:
 
     @property
     def slm_phase(self):
-        return self.__hologram.get_phase()
+        if self.backend_type == "slm_suite":
+            return self.backend.get_phase()
+        return self.backend.final_phase
 
     @property
     def forward_intensity(self):
-        return np.abs(self.__hologram.get_farfield()) ** 2
+        if self.backend_type == "slm_suite":
+            return np.abs(self.backend.get_farfield()) ** 2
+        return self.backend.final_intensity
 
     def __get_run_dir(self, base_dir: str) -> Path:
         return self.exp._get_run_dir(base_dir) / f"phase_retrieval/{self.config.hash}"
@@ -974,6 +1016,9 @@ def run_slmsuit_phase_retrieval():
     solver.optimize()
     solver.plot(base_dir="./results")
     solver.write_h5(base_dir="./results")
+
+    # TODO
+    solver.log_to_aim(experiment_name="dummy")
 
     metrics = PerformanceMetrics.from_solver(solver)
 
