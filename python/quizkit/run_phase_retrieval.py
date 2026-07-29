@@ -400,7 +400,6 @@ class PerformanceMetrics(ConfigMixin):
         bg_mask = flat_trap_labels == 0
         bg_intensities = flat_forward_intensity[bg_mask]
         max_bg = float(np.max(bg_intensities))
-        mean_bg = float(np.mean(bg_intensities))
 
         ff_centered = ff_int - np.mean(flat_forward_intensity)
         target_centered = target_int - np.mean(target_int)
@@ -411,8 +410,10 @@ class PerformanceMetrics(ConfigMixin):
         trap_uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
+        efficiency = sig_power / total_power
+
         # TODO HACK? _, ...
-        efficiency, efficiency_diffuse, efficiency_zeroth = calculate_diffuse_efficiencies(
+        _, efficiency_diffuse, efficiency_zeroth = calculate_diffuse_efficiencies(
             forward_intensity=ff_int,
             target=target_int,
             psf_model=psf_model,
@@ -422,7 +423,7 @@ class PerformanceMetrics(ConfigMixin):
 
         return cls(
             trap_uniformity=trap_uniformity,
-            efficiency=sig_power / total_power,
+            efficiency=efficiency,
             efficiency_diffuse=efficiency_diffuse,
             efficiency_zeroth=efficiency_zeroth,
             stray_light_fraction=bg_power / total_power,
