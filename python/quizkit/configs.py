@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import uuid  # TODO
 from dataclasses import asdict, dataclass, field
@@ -18,6 +19,24 @@ class ConfigMixin:
 
     def to_json(self, indent: int = 4) -> str:
         return json.dumps(self.to_dict(), indent=indent)
+
+    def _generate_param_hash(self) -> str:
+        data = self.to_dict()
+        
+        # Remove volatile or output fields that do not define the parameter set
+        for key in ["hash", "timestamp", "solver_runtime"]:
+            data.pop(key, None)
+            
+        # Recursive pop for nested configs (like trap_config inside RunConfig)
+        if "trap_config" in data and isinstance(data["trap_config"], dict):
+            data["trap_config"].pop("hash", None)
+            data["trap_config"].pop("timestamp", None)
+
+        # sort_keys=True guarantees identical parameter sets produce identical strings
+        param_string = json.dumps(data, sort_keys=True)
+        
+        # Use MD5 for a fast, short, deterministic hex ID
+        return hashlib.md5(param_string.encode('utf-8')).hexdigest()[:7]
 
 
 @dataclass
@@ -57,11 +76,16 @@ class RunConfig(ConfigMixin):
     slm_shape: Tuple[int, int]
     trap_config: TrapConfig
     comment: Optional[str] = None
-
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex[:7])
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
+
+    hash: str = field(init=False)
+
+    def __post_init__(self):
+        # TODO !!! remove before flight
+        self.hash = ""
+        self.hash = self._generate_param_hash()
 
     def __getattr__(self, name):
         try:
@@ -95,7 +119,13 @@ class SolverConfig(ConfigMixin):
     initial_epsilon: float = 0.0
     anneal_rate: float = 0.05
 
-    hash: str = field(default_factory=lambda: uuid.uuid4().hex[:7])
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     )
+
+    hash: str = field(init=False)
+
+    def __post_init__(self):
+        # TODO !!! remove before flight
+        self.hash = ""
+        self.hash = self._generate_param_hash()

@@ -320,6 +320,7 @@ def calculate_diffuse_efficiencies(
 class PerformanceMetrics(ConfigMixin):
     _DESCRIPTIONS: ClassVar[dict[str, str]] = {
         "uniformity": "Michelson uniformity of integrated trap powers",
+        "entropy": "Shannon entropy of normalized integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
         "efficiency_diffuse": "Fraction of forward power within the (best-fit) forward psf target trap regions (TBD)",
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
@@ -337,6 +338,7 @@ class PerformanceMetrics(ConfigMixin):
     }
 
     uniformity: float
+    entropy: float
     efficiency: float
     efficiency_diffuse: float
     stray_light_fraction: float
@@ -412,6 +414,11 @@ class PerformanceMetrics(ConfigMixin):
 
         # TODO should be peak in a trap; rather than integrated.
         uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
+
+        # NB normalized shannon entropy
+        trap_ps = trap_powers / (sig_power + 1e-12) 
+        entropy = float(-np.sum(trap_ps * np.log(trap_ps + 1e-12)) / np.log(num_traps + 1e-12))
+
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
         efficiency = sig_power / total_power
@@ -427,6 +434,7 @@ class PerformanceMetrics(ConfigMixin):
 
         return cls(
             uniformity=uniformity,
+            entropy=entropy,
             efficiency=efficiency,
             efficiency_diffuse=efficiency_diffuse,
             efficiency_zeroth=efficiency_zeroth,
@@ -886,7 +894,7 @@ def run_phase_retrieval():
         for random_seed in np.arange(num_random_seeds):
             random_seed = int(42 + random_seed)
 
-            for smooth_phase in (False,):
+            for smooth_phase in (True,):
                 solver_config = SolverConfig(
                     method=method,  # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
@@ -914,7 +922,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                # solver.update_aim(experiment_name=solver_config.hash)
+                solver.update_aim(experiment_name=solver_config.hash)
 
     logger.info(f"Done.")
 
