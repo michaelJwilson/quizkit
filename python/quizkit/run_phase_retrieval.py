@@ -112,23 +112,13 @@ def plot_scalar_field(
     plt.close(fig)
 """
 
-
+'''
 def write_performance_metrics_tex(
     filepath: str | Path,
     metrics_by_run: dict[str, dict],
     caption: str = "Computed performance metrics for the optimized SLM phase.",
     label: str = "tab:hologram_metrics",
 ) -> None:
-    """
-    Generates and writes a LaTeX table comparing performance metrics across solver runs.
-
-    Args:
-        filepath: The destination path for the .tex file.
-        metrics_by_run: Dictionary mapping run names to their metric dictionaries.
-                        e.g., {"gs": dict, "wgs": dict}.
-        caption: Table caption string.
-        label: Table LaTeX label.
-    """
     # Descriptions for the PerformanceMetrics properties
     descriptions = {
         "efficiency": "Fraction of total power within target trap regions",
@@ -205,7 +195,89 @@ def write_performance_metrics_tex(
 
     with open(out_path, "w") as f:
         f.write(latex)
+'''
+def write_performance_metrics_tex(
+    filepath: str | Path,
+    metrics_by_run: dict[str, dict],
+    caption: str = "Computed performance metrics for the optimized SLM phase.",
+    label: str = "tab:hologram_metrics",
+) -> None:
+    descriptions = {
+        "efficiency": "Fraction of total power within target trap regions",
+        "stray_light_fraction": "Fraction of total power outside target trap regions (1 - efficiency)",
+        "interference_efficiency": "Fraction of total power leaking into reciprocal lattice",
+        "pearson": "Pearson correlation of forward intensity and target intensity",
+        "trap_cv": "Coefficient of variation of integrated trap powers",
+        "trap_mean": "Mean integrated trap power",
+        "trap_min": "Minimum integrated trap power",
+        "trap_max": "Maximum integrated trap power",
+        "trap_uniformity_minmax": "Min-max (Michelson) uniformity of integrated trap powers",
+        "ghost_to_mean_ratio": "Ratio of max background intensity to mean trap power",
+        "ghost_to_dimmest_ratio": "Ratio of max background intensity to minimum trap power",
+        "signal_to_background_floor": "Ratio of mean trap power to mean background intensity",
+    }
 
+    run_keys = list(metrics_by_run.keys())
+    n_runs = len(run_keys)
+
+    # 1. Determine Column Headers and Tabular Alignment
+    # Always use the provided key(s), capitalized
+    headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+
+    c_cols = "c" * n_runs
+    tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
+
+    # 2. Build Header Row
+    header_row = (
+        " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
+        + " \\\\"
+    )
+
+    # 3. Build Data Rows
+    # Grab the metric names from the first run (excluding the raw array)
+    metric_names = [k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"]
+
+    rows = []
+    for m_name in metric_names:
+        escaped_m_name = m_name.replace("_", "\\_")
+        row_parts = [f"\\texttt{{{escaped_m_name}}}"]
+
+        for key in run_keys:
+            val = metrics_by_run[key].get(m_name, np.nan)
+
+            if isinstance(val, float) and not np.isnan(val):
+                if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
+                    row_parts.append(f"{val:.2e}")
+                else:
+                    row_parts.append(f"{val:.4f}")
+            else:
+                row_parts.append(str(val))
+
+        desc = descriptions.get(m_name, "")
+        row_parts.append(desc)
+        rows.append(" & ".join(row_parts) + " \\\\")
+
+    latex = f"""\\begin{{table}}[htbp]
+\\centering
+\\small
+{tabular_def}
+\\toprule
+{header_row}
+\\midrule
+{chr(10).join(rows)}
+\\bottomrule
+\\end{{tabular}}
+\\caption{{{caption}}}
+\\label{{{label}}}
+\\end{{table}}"""
+
+    out_path = Path(filepath)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Writing {out_path}.")
+
+    with open(out_path, "w") as f:
+        f.write(latex)
 
 """
 def get_trap_zoom(target_intensity, pad=25):
@@ -632,8 +704,7 @@ class HologramExperiment:
             dataset_name="trap_array_mask",
         )
 """
-
-
+"""
 @dataclass
 class PerformanceMetrics(ConfigMixin):
     efficiency: float
@@ -716,6 +787,96 @@ class PerformanceMetrics(ConfigMixin):
             trap_labels=solver.exp.trap_labels,
             num_traps=solver.exp.num_traps,
         )
+"""
+@dataclass
+class PerformanceMetrics(ConfigMixin):
+    efficiency: float
+    stray_light_fraction: float
+    interference_efficiency: float
+    pearson: float
+    trap_cv: float
+    trap_mean: float
+    trap_min: float
+    trap_max: float
+    trap_uniformity_minmax: float
+    ghost_to_mean_ratio: float
+    ghost_to_dimmest_ratio: float
+    signal_to_background_floor: float
+    trap_powers: np.ndarray = field(repr=False)
+
+    @classmethod
+    def compute(
+        cls,
+        forward_intensity: np.ndarray,
+        target_intensity: np.ndarray,
+        trap_labels: jnp.ndarray | np.ndarray,
+        num_traps: int,
+        reciprocal_mask: np.ndarray,
+    ) -> "PerformanceMetrics":
+        ff_int = np.asarray(forward_intensity, dtype=np.float64)
+        target_int = np.asarray(target_intensity, dtype=np.float64)
+
+        flat_forward_intensity = ff_int.ravel()
+        flat_trap_labels = np.asarray(trap_labels).ravel()
+
+        trap_powers_jax = jnp.bincount(
+            flat_trap_labels,
+            weights=flat_forward_intensity,
+            length=num_traps + 1,
+        )[1:]
+        trap_powers = np.asarray(trap_powers_jax, dtype=np.float64)
+
+        trap_min = float(np.min(trap_powers))
+        trap_max = float(np.max(trap_powers))
+        trap_mean = float(np.mean(trap_powers))
+        trap_std = float(np.std(trap_powers))
+
+        trap_cv = float(trap_std / (trap_mean + 1e-12))
+
+        total_power = float(np.sum(flat_forward_intensity))
+        sig_power = float(np.sum(trap_powers))
+        bg_power = total_power - sig_power
+
+        reciprocal_power = float(np.sum(ff_int[reciprocal_mask]))
+        interference_efficiency = reciprocal_power / (total_power + 1e-12)
+
+        bg_mask = flat_trap_labels == 0
+        bg_intensities = flat_forward_intensity[bg_mask]
+        max_bg = float(np.max(bg_intensities))
+        mean_bg = float(np.mean(bg_intensities))
+
+        ff_centered = ff_int - np.mean(flat_forward_intensity)
+        target_centered = target_int - np.mean(target_int)
+        numerator = np.sum(ff_centered * target_centered)
+        denominator = np.sqrt(np.sum(ff_centered**2) * np.sum(target_centered**2))
+        pearson = float(numerator / (denominator + 1e-12))
+
+        return cls(
+            efficiency=sig_power / total_power,
+            stray_light_fraction=bg_power / total_power,
+            interference_efficiency=interference_efficiency,
+            pearson=pearson,
+            trap_cv=trap_cv,
+            trap_mean=trap_mean,
+            trap_min=trap_min,
+            trap_max=trap_max,
+            trap_uniformity_minmax=1.0
+            - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12)),
+            ghost_to_mean_ratio=max_bg / (trap_mean + 1e-12),
+            ghost_to_dimmest_ratio=max_bg / (trap_min + 1e-12),
+            signal_to_background_floor=trap_mean / (mean_bg + 1e-12),
+            trap_powers=trap_powers,
+        )
+
+    @classmethod
+    def from_solver(cls, solver: Any) -> "PerformanceMetrics":
+        return cls.compute(
+            forward_intensity=solver.forward_intensity,
+            target_intensity=solver.target_intensity,
+            trap_labels=solver.exp.trap_labels,
+            num_traps=solver.exp.num_traps,
+            reciprocal_mask=solver.exp.reciprocal_mask,
+        )
 
 
 class HologramExperimentSolver:
@@ -792,36 +953,10 @@ class HologramExperimentSolver:
                             context={"subset": "Metrics"},
                         )
 
-            fig = plot_scalar_field(..., return_fig=True)
-            run.track(Figure(fig), name="slm_phase", context={"type": "final_state"})
-            plt.close(fig)
-
-    def log_to_aim(self, experiment_name: str = "phase_retrieval_sweep"):
-        if self.backend_type != "jax":
-            logger.warning(
-                "Aim logging currently only supports the JAX backend history."
-            )
-            return
-
-        run = Run(experiment=experiment_name)
-        run["hparams"] = {
-            "run_config": self.exp.run_config.to_dict(),
-            "solver_config": self.config.to_dict(),
-        }
-
-        history = self.backend.history
-
-        for step_idx in range(self.config.maxiter):
-            for metric_name, metric_array in history.items():
-                run.track(
-                    metric_array[step_idx].item(),
-                    name=metric_name,
-                    step=step_idx,
-                    context={"subset": "Metrics"},
-                )
-
-        run.close()
-        logger.info(f"Aim run closed for {self.config.hash}")
+            # TODO
+            # fig = plot_scalar_field(..., return_fig=True)
+            # run.track(Figure(fig), name="slm_phase", context={"type": "final_state"})
+            # plt.close(fig)
 
     @property
     def target_intensity(self):
@@ -999,7 +1134,7 @@ def run_phase_retrieval():
         for random_seed in np.arange(42, 45 + 1, 1, dtype=int):
             for smooth_phase in (False,):
                 solver_config = SolverConfig(
-                    method="HIO", # {"GS", "GD", "AA", "HIO"}
+                    method="GD", # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,
                     random_seed=int(random_seed),
                     smooth_phase=smooth_phase,
@@ -1013,9 +1148,6 @@ def run_phase_retrieval():
                 solver.plot(base_dir="./results")
                 solver.write_h5(base_dir="./results")
 
-                # TODO
-                # solver.log_to_aim(experiment_name="dummy")
-
                 metrics = PerformanceMetrics.from_solver(solver)
 
                 pprint(metrics, expand_all=True)
@@ -1027,6 +1159,8 @@ def run_phase_retrieval():
                     metrics_by_run={solver.config.method: metrics.to_dict()},
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
+
+                solver.update_aim(experiment_name=solver_config.hash)
 
     logger.info(f"Done.")
 

@@ -63,6 +63,27 @@ def get_trap_array_mask(slm_shape, array_shape, array_pitch, array_center, pad=2
 
     return trap_array_mask
 
+# TODO
+def get_reciprocal_trap_array_mask(target_intensity: np.ndarray, array_pitch: Tuple[int, int]) -> np.ndarray:
+    target_mask = target_intensity > 0
+    if not np.any(target_mask):
+        return np.zeros_like(target_mask, dtype=bool)
+
+    dy, dx = int(array_pitch[0] // 2), int(array_pitch[1] // 2)
+    
+    shifted_mask = np.roll(target_mask, shift=(dy, dx), axis=(0, 1))
+
+    y_coords, x_coords = np.where(target_mask)    
+    y_min, y_max = y_coords.min(), y_coords.max()
+    x_min, x_max = x_coords.min(), x_coords.max()
+
+    perimeter_mask = np.zeros_like(target_mask, dtype=bool)
+    perimeter_mask[y_min:y_max+1, x_min:x_max+1] = True
+
+    reciprocal_mask = shifted_mask & perimeter_mask & ~target_mask
+    
+    return reciprocal_mask
+
 
 def encode_target_traps(target_intensity, threshold_frac=0.0):
     threshold = threshold_frac * target_intensity.max()
@@ -157,6 +178,12 @@ class HologramExperiment:
         )
         self.trap_array_mask.flags.writeable = False
 
+        self.reciprocal_mask = get_reciprocal_trap_array_mask(
+            self.target, self.run_config.array_pitch
+        )
+        self.reciprocal_mask.flags.writeable = False
+
+
         trap_labels_np, self.num_traps, coords_np, self.trap_h, self.trap_w = (
             encode_target_traps(self.target, threshold_frac=0.0)
         )
@@ -188,7 +215,7 @@ class HologramExperiment:
             obj.slm_illumination = f["slm/slm_illumination"][:]
             obj.target = f["target/target"][:]
             obj.trap_array_mask = f["trap_array_mask/trap_array_mask"][:]
-
+            obj.reciprocal_mask = f["reciprocal_mask/reciprocal_mask"][:]
         obj.slm_illumination.flags.writeable = False
         obj.target.flags.writeable = False
 
