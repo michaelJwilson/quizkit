@@ -959,9 +959,6 @@ def run_phase_retrieval():
     trap_config = TrapConfigs.ON_AXIS.to_config()
     trap_config_off_center = TrapConfigs.OFF_AXIS.to_config()
 
-    # pprint(trap_config, expand_all=True)
-    # pprint(trap_config_off_center, expand_all=True)
-
     run_config = RunConfig(
         wavelength=780e-9,
         pixel_pitch=8.0e-6,
