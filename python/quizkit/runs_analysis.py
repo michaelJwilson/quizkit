@@ -196,10 +196,8 @@ if __name__ == "__main__":
 
         pprint(core)
 
-        targeted_df = data.select(
-            "job_id",
-            pl.col("job").struct.field("method"),
-            pl.col("metrics").struct.field("uniformity"),
-        )
+        first_job = core.filter(pl.col("job_id") == 0)
+
+        print(first_job)
 
         # pprint(data.schema["metrics"], expand_all=True)
