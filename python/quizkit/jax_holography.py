@@ -430,7 +430,7 @@ class JaxHologramBackend:
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
 
-    def __run_gd_bp_limited(self, ds_factor=4, interp_method="lanczos3"):
+    def __run_gd_bp_limited(self, ds_factor=8, interp_method="lanczos3"):
         logger.warning(f"Assuming a band-limited slm phase space.")
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
