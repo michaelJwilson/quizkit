@@ -6,9 +6,6 @@ from pathlib import Path
 from typing import NamedTuple, Tuple
 from quizkit.configs import TrapConfig, TrapConfigs
 
-# from quizkit.run_phase_retrieval import construct_jobs
-
-# pl.Config.set_tbl_width_chars(10)
 pl.Config.set_tbl_cols(-1)
 
 
@@ -24,7 +21,7 @@ class Job(NamedTuple):
 # TODO
 # 
 # job
-#     method, random_seed, downsample_factor, smooth_phase, trap_config, initial_epsilon
+#     job_id,method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
 # 
 # metrics:
 #     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
