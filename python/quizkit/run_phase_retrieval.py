@@ -881,7 +881,7 @@ class HologramExperimentSolver:
 
 
 def run_phase_retrieval():
-    method = "GS"
+    method = "GD"
     solver_backend = "jax"  # {"slm_suite", "jax"}
     num_random_seeds = 1
     slm_shape = (1200, 1920)  # (height, width) in pixels,

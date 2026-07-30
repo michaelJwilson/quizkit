@@ -451,6 +451,10 @@ class JaxHologramBackend:
         imag_sub_init = jax.image.resize(jnp.imag(initial_complex), sub_shape, method="bicubic")
         initial_sub_phase = jnp.angle(real_sub_init + 1j * imag_sub_init)
 
+        blur_otf = get_gaussian_blur_otf(
+            self.source_amp.shape, self.config.smooth_sigma
+        )
+
         def loss_fn(sub_phase, normed=False):
             # 1. Band-limited reconstruction (upsampling)
             complex_sub = jnp.exp(1j * sub_phase)
@@ -530,6 +534,12 @@ class JaxHologramBackend:
 
         # Extract the final upsampled phase directly from the last scan execution
         final_phase_native = jnp.angle(final_complex_phasor_native[-1])
+
+        if self.config.smooth_phase:
+            complex_phase = jnp.exp(1j * final_phase_native)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+             
+            final_phase_native = jnp.angle(blurred_complex)
         
         final_complex_ff_native = propagate_ff_native(
             source_amp_native * jnp.exp(1j * final_phase_native)
