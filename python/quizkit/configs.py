@@ -105,7 +105,7 @@ class SolverConfig(ConfigMixin):
     solver_runtime: float | None = None
 
     smooth_phase: bool = True
-    smooth_sigma: int = 1  # pixels
+    smooth_sigma: int = 2  # pixels
 
     # NB
     downsample_factor: int = 4

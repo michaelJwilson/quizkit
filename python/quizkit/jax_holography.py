@@ -328,6 +328,7 @@ class JaxHologramBackend:
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
 
+    """
     def __run_gd(self, smooth_lambda=0.0):
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)
@@ -431,7 +432,112 @@ class JaxHologramBackend:
         final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
+    """
 
+    def __run_gd(self, smooth_lambda=0.0):
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+
+        target_intensity_native = target_amp_native**2
+        optimizer = optax.adam(learning_rate=self.config.learning_rate)
+        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+
+        def loss_fn(phase, normed=False):
+            complex_phasor = jnp.exp(1j * phase)
+            
+            # IN-LOOP BLUR: Apply physics before propagating
+            if self.config.smooth_phase:
+                blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phasor))
+                # Re-normalize to physical SLM amplitude
+                complex_phasor = blurred_complex / (jnp.abs(blurred_complex) + 1e-12)
+
+            complex_nf = source_amp_native * complex_phasor
+            complex_ff = propagate_ff_native(complex_nf)
+            forward_intensity = jnp.abs(complex_ff) ** 2
+
+            if normed:
+                norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
+                norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
+                diff = norm_inferred - norm_target
+            else:
+                diff = forward_intensity - target_intensity_native
+
+            if self.config.loss_norm.upper() == "L1":
+                loss_val = jnp.mean(jnp.abs(diff))
+            elif self.config.loss_norm.upper() == "L2":
+                loss_val = jnp.mean(diff**2)
+            else:
+                raise ValueError(f"Unsupported loss norm: {self.config.loss_norm}")
+
+            loss_val += smooth_lambda * smooth_phase_regularization(phase)
+
+            # Return the applied phasor so we know the true physical phase
+            return loss_val, (forward_intensity, complex_phasor)
+
+        loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
+
+        @jax.jit
+        def gd_step(carry, step_idx):
+            phase, opt_state, key = carry
+            key, subkey = jax.random.split(key)
+
+            (loss_val, (inferred_intensity, complex_phasor)), grads = loss_and_grad(phase)
+            updates, opt_state = optimizer.update(grads, opt_state, phase)
+
+            new_phase = optax.apply_updates(phase, updates)
+
+            epsilon = self.config.initial_epsilon * jnp.exp(-self.config.anneal_rate * step_idx)
+            key_phase, key_mask = jax.random.split(subkey, 2)
+            random_phases = jax.random.uniform(key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi)
+            explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
+            new_phase = jnp.where(explore_mask, random_phases, new_phase)
+            
+            new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+            # Calculate metrics using the actual intensity
+            metrics = compute_step_metrics_jax(
+                inferred_intensity,
+                target_intensity_native,
+                self.trap_labels,
+                self.num_traps,
+            )
+            metrics["loss"] = loss_val
+            
+            # Track the physical phase (what the SLM actually displays)
+            physical_phase = jnp.angle(complex_phasor)
+
+            return (new_phase, opt_state, key), (metrics, physical_phase)
+
+        opt_state = optimizer.init(initial_phase_native)
+        step_key = jax.random.PRNGKey(self.config.random_seed)
+
+        (final_latent_phase, _, _), (history, physical_phases) = jax.lax.scan(
+            gd_step,
+            (initial_phase_native, opt_state, step_key),
+            jnp.arange(self.config.maxiter),
+        )
+        
+        final_phase_native = physical_phases[-1]
+
+        # NB high-k phases are unconstrained; smooth them out.
+        if self.config.smooth_phase:
+            complex_phase = jnp.exp(1j * final_phase_native)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+
+            final_phase_native = jnp.angle(blurred_complex)
+        
+        final_complex_ff_native = propagate_ff_native(
+            source_amp_native * jnp.exp(1j * final_phase_native)
+        )
+        final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
+
+        final_phase = jnp.fft.fftshift(final_phase_native)
+        final_intensity = jnp.fft.fftshift(final_intensity_native)
+        final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+        return np.asarray(final_phase), np.asarray(final_intensity), history
+        
     def __run_gd_bp_limited(self, downsample_factor=4, interp_method="lanczos3"):
         logger.warning(f"Assuming a band-limited slm phase space.")
 

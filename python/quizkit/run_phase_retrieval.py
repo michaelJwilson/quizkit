@@ -915,14 +915,16 @@ class Job(NamedTuple):
     downsample_factor: int
     smooth_phase: bool
     trap_config: TrapConfig
+    initial_epsilon: float
 
 
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
     solver_backends = ("jax",)
-    num_random_seeds = 10
+    num_random_seeds = 1
     downsample_factors = (1, 4)
     smooth_phases = (False, True)
+    initial_epsilons = (0.0, 0.05, 0.1)
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
@@ -934,8 +936,8 @@ def construct_jobs() -> Tuple[Job, ...]:
 
     jobs = []
 
-    for method, backend, ds_factor, smooth, trap_conf in itertools.product(
-        methods, solver_backends, downsample_factors, smooth_phases, trap_configs
+    for method, backend, ds_factor, smooth, trap_conf, initial_epsilon in itertools.product(
+        methods, solver_backends, downsample_factors, smooth_phases, trap_configs, initial_epsilons
     ):
         # NB downsampling applies to GS only
         if method != "GS" and ds_factor > 1:
@@ -948,6 +950,7 @@ def construct_jobs() -> Tuple[Job, ...]:
                 num_random_seeds=num_random_seeds,
                 downsample_factor=ds_factor,
                 smooth_phase=smooth,
+                initial_epsilon=initial_epsilon,
                 trap_config=trap_conf,
             )
         )
@@ -958,6 +961,19 @@ def construct_jobs() -> Tuple[Job, ...]:
 def run_phase_retrieval():
     jobs = construct_jobs()
     slm_shape = (1200, 1920)  # (height, width) in pixels,
+
+    # TODO HACK
+    jobs = (
+        Job(
+            method="GD",
+            solver_backend="jax",
+            num_random_seeds=1,
+            downsample_factor=1,
+            smooth_phase=True,
+            trap_config=TrapConfigs.ON_AXIS.to_config(),
+            initial_epsilon=0.05,
+        ),
+    )
 
     for job in jobs:
         try:
@@ -984,6 +1000,7 @@ def run_phase_retrieval():
                     random_seed=int(random_seed),
                     smooth_phase=job.smooth_phase,
                     downsample_factor=job.downsample_factor,
+                    initial_epsilon=job.initial_epsilon,
                     solver_backend=job.solver_backend,  # {"slm_suite", "jax"}
                 )
 
@@ -1006,7 +1023,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                # solver.update_aim(experiment_name=solver_config.hash)
+                solver.update_aim(experiment_name=solver_config.hash)
 
         except Exception as e:
             logger.error(
