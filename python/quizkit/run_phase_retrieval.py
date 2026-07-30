@@ -939,8 +939,8 @@ def construct_jobs() -> Tuple[Job, ...]:
     for method, backend, ds_factor, smooth, trap_conf, initial_epsilon in itertools.product(
         methods, solver_backends, downsample_factors, smooth_phases, trap_configs, initial_epsilons
     ):
-        # NB downsampling applies to GS only
-        if method != "GS" and ds_factor > 1:
+        # NB downsampling applies to GD only
+        if method != "GD" and ds_factor > 1:
             continue
 
         jobs.append(
@@ -975,6 +975,8 @@ def run_phase_retrieval():
         ),
     )
     """
+
+    logger.info(f"Solving for {len(jobs)} jobs.")
 
     for job in jobs:
         try:
