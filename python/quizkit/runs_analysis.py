@@ -27,30 +27,13 @@ def construct_jobs() -> Tuple[Job, ...]:
     num_random_seeds = 10
     solver_backends = ("jax",)
 
-    # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
-    #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
-    #
-    # `"knm"``, this is ``(shape[1], shape[0])/2``.
-    # ``"kxy"``, this is ``(0,0)``.
-    # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
     trap_configs = (TrapConfigs.ON_AXIS.to_config(), TrapConfigs.OFF_AXIS.to_config())
-
     jobs = []
 
     for (
-        method,
-        backend,
-        ds_factor,
-        smooth,
-        trap_conf,
-        initial_epsilon,
+        method, backend, ds_factor, smooth, trap_conf, initial_epsilon,
     ) in itertools.product(
-        methods,
-        solver_backends,
-        downsample_factors,
-        smooth_phases,
-        trap_configs,
-        initial_epsilons,
+        methods, solver_backends, downsample_factors, smooth_phases, trap_configs, initial_epsilons,
     ):
         # NB downsampling applies to GD only
         if method != "GD" and ds_factor > 1:
@@ -79,16 +62,12 @@ def load_data(results_dir: str = "./results") -> pl.DataFrame:
         run_dir = solver_dir.parent.parent
 
         try:
-            with open(metric_file) as f:
-                metrics = json.load(f)
-            with open(solver_dir / "solver_config.json") as f:
-                solver_cfg = json.load(f)
-            with open(run_dir / "run_config.json") as f:
-                run_cfg = json.load(f)
+            with open(metric_file) as f: metrics = json.load(f)
+            with open(solver_dir / "solver_config.json") as f: solver_cfg = json.load(f)
+            with open(run_dir / "run_config.json") as f: run_cfg = json.load(f)
 
             trap_cfg = run_cfg.pop("trap_config", {})
 
-            # Group the JSON dictionaries logically rather than flattening them
             record = {
                 "job": {
                     **solver_cfg,
@@ -96,6 +75,9 @@ def load_data(results_dir: str = "./results") -> pl.DataFrame:
                     "trap_id": trap_cfg.get("trap_id", -1),
                 },
                 "metrics": metrics,
+                # Safely extract hashes for upstream aggregation
+                "run_hash": str(run_cfg.get("run_hash", run_cfg.get("hash", "N/A"))),
+                "solver_hash": str(solver_cfg.get("solver_hash", solver_cfg.get("hash", "N/A"))),
                 "run_info": run_cfg,
             }
             records.append(record)
@@ -107,46 +89,68 @@ def load_data(results_dir: str = "./results") -> pl.DataFrame:
     if df.is_empty():
         return df
 
-    # Dynamically generate a job_id by hashing the 'job' struct.
-    # All rows with identical solver configurations will share the same job_id.
     df = df.with_columns(pl.col("job").hash().rank("dense").alias("job_id"))
-
-    # Reorder top-level structural columns
-    df = df.select(["job_id", "job", "metrics", "run_info"])
+    df = df.select(["job_id", "job", "metrics", "run_hash", "solver_hash", "run_info"])
 
     return df
 
-
-def get_question_key(method_str: str, is_smooth: bool) -> str:
-    if method_str == "GD" and not is_smooth: return "GD"
-    if method_str == "GS" and not is_smooth: return "GS"
-    if method_str == "GD" and is_smooth:     return "GD-SMOOTH"
-    if method_str == "GS" and is_smooth:     return "GS-SMOOTH"
-    return "UNKNOWN"
 
 def generate_comparison_table(
     df: pl.DataFrame,
     metric_cols: list[str],
     trap_type: str,
-    ds_factor: int,
     epsilon: float,
     filename: str,
     caption: str,
     label: str,
+    comparison_mode: str = "method",
+    ds_factor: int = 1,
 ) -> None:
-    """Filters the dataframe and writes a specialized LaTeX table for GD vs GS."""
+    """Filters the dataframe and writes a specialized LaTeX table dynamically based on mode."""
     
-    # Filter for the specific experimental conditions
-    subset = df.filter(
-        (pl.col("downsample_factor") == ds_factor) &
-        (pl.col("trap_type") == trap_type) &
-        (pl.col("initial_epsilon") == epsilon)
-    )
+    if comparison_mode == "method":
+        subset = df.filter(
+            (pl.col("downsample_factor") == ds_factor) &
+            (pl.col("trap_type") == trap_type) &
+            (pl.col("initial_epsilon") == epsilon)
+        )
+        
+        def get_key(row):
+            m, s = row["method"], row["smooth_phase"]
+            if m == "GD" and not s: return "GD"
+            if m == "GS" and not s: return "GS"
+            if m == "GD" and s: return "GD-$\\mathcal{C}(\\phi)$"
+            if m == "GS" and s: return "GS-$\\mathcal{C}(\\phi)$"
+            return None
+            
+        desired_keys = ["GD", "GS", "GD-$\\mathcal{C}(\\phi)$", "GS-$\\mathcal{C}(\\phi)$"]
+        
+    elif comparison_mode == "downsample":
+        subset = df.filter(
+            (pl.col("method") == "GD") &
+            (pl.col("trap_type") == trap_type) &
+            (pl.col("initial_epsilon") == epsilon) &
+            (pl.col("downsample_factor").is_in([1, 4]))
+        )
+        
+        def get_key(row):
+            ds, s = row["downsample_factor"], row["smooth_phase"]
+            if ds == 1 and not s: return "GD"
+            if ds == 4 and not s: return "GD 1/4"
+            if ds == 1 and s: return "GD-$\\mathcal{C}(\\phi)$"
+            if ds == 4 and s: return "GD-$\\mathcal{C}(\\phi)$ 1/4"
+            return None
+            
+        desired_keys = ["GD", "GD 1/4", "GD-$\\mathcal{C}(\\phi)$", "GD-$\\mathcal{C}(\\phi)$ 1/4"]
+    else:
+        raise ValueError(f"Unknown comparison_mode {comparison_mode}")
 
     metrics_by_run = {}
 
     for row in subset.iter_rows(named=True):
-        run_key = get_question_key(row["method"], row["smooth_phase"])
+        run_key = get_key(row)
+        if not run_key:
+            continue
         
         run_metrics = {}
         for m in metric_cols:
@@ -156,15 +160,19 @@ def generate_comparison_table(
             ferr_key = f"{m}_ferr"
             if ferr_key in row:
                 run_metrics[ferr_key] = row[ferr_key]
+        
+        # Inject hashes into the dictionary so write_tex_table renders them as rows
+        for hash_type in ["run_hash", "solver_hash"]:
+            if hash_type in row and row[hash_type] != "N/A":
+                # Truncate to standard 8-char short hash and escape any underscores for LaTeX
+                val = str(row[hash_type]).replace("_", "\\_")
+                run_metrics[hash_type] = val[:8] if len(val) >= 8 else val
                  
         metrics_by_run[run_key] = run_metrics
     
-    # Map to LaTeX-friendly names. Using .get(..., {}) protects against missing data.
+    # Map cleanly guaranteeing the exact column order requested
     formatted_metrics_by_run = {
-        "GD": metrics_by_run.get("GD", {}),
-        "GS": metrics_by_run.get("GS", {}),
-        "GD-$\\mathcal{C}(\\phi)$": metrics_by_run.get("GD-SMOOTH", {}),
-        "GS-$\\mathcal{C}(\\phi)$": metrics_by_run.get("GS-SMOOTH", {}),
+        k: metrics_by_run.get(k, {}) for k in desired_keys
     }
 
     out_dir = Path("./runs_analysis")
@@ -179,26 +187,9 @@ def generate_comparison_table(
         drop_description=True,
     )
 
-# TODO
-#
-# job
-#     job_id, method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
-#
-# metrics:
-#     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
-#     psf_wx, psf_wy, runtime
-#
-# to answer:
-#     baseline and single hyper-parameter edit
-#     with metric for best seed in job & metric errors from std. across random seeds.  assumes metrics bound by (0, 1)
-#         1) GD better than GS with/without smoothing @ on-axis,  downsample_factor=1, initial_epsilon=0.00, 
-#         2) GD better than GS with/without smoothing @ off-axis, downsample_factor=1, initial_epsilon=0.00,
-#         3) GD better than GS with/without smoothing @ on-axis,  downsample_factor=1, initial_epsilon=0.05,
-#         4) GD sampled better than GD with/without smoothing @ on-axis, initial_epsilon=0.00, 
-#
-#
 table_variants = [
     {
+        "comparison_mode": "method",
         "trap_type": "on_axis", 
         "ds_factor": 1, 
         "epsilon": 0.00,
@@ -207,6 +198,7 @@ table_variants = [
         "label": "tab:gd_vs_gs_on_axis_ds1_eps00"
     },
     {
+        "comparison_mode": "method",
         "trap_type": "off_axis", 
         "ds_factor": 1, 
         "epsilon": 0.00,
@@ -215,6 +207,7 @@ table_variants = [
         "label": "tab:gd_vs_gs_off_axis_ds1_eps00"
     },
     {
+        "comparison_mode": "method",
         "trap_type": "on_axis", 
         "ds_factor": 1, 
         "epsilon": 0.05,
@@ -223,99 +216,62 @@ table_variants = [
         "label": "tab:gd_vs_gs_on_axis_ds1_eps05"
     },
     {
+        "comparison_mode": "downsample",
         "trap_type": "on_axis", 
-        "ds_factor": 4, 
+        "ds_factor": 1, # Passed but overridden by 'downsample' mode logic picking 1 & 4
         "epsilon": 0.00,
         "filename": "fourth_question.tex",
-        "caption": r"GD vs GS w/o $\mathcal{C}(\phi)$: downsampled",
-        "label": "tab:gd_vs_gs_on_axis_ds4_eps00"
+        "caption": r"GD (DS=1) vs GD (DS=4) w/o $\mathcal{C}(\phi)$: band-limited reconstrucion",
+        "label": "tab:gd_vs_gd_on_axis_ds4_eps00"
     },
 ]
 
 
 if __name__ == "__main__":
+    root ="./results_073026" 
     target_metric = "uniformity"
 
     jobs = construct_jobs()
-    data = load_data("./results_073026")
+    data = load_data(f"./{root}")
 
     if not data.is_empty():
-        # NB job_id (i64), job (struct), metrics (struct), run_info (struct)
-        # print(data)
-
         core = (
             data.drop("run_info")
             .unnest("job", "metrics")
             .drop(
                 [
-                    "trap_powers",
-                    "solver_backend",
-                    "ghost_to_trap_med_ratio",
-                    "solver_runtime",
-                    "learning_rate",
-                    "maxiter",
-                    "aa_alpha",
-                    "hio_beta",
-                    "anneal_rate",
-                    "trap_med",
-                    "trap_mean",
-                    "trap_std",
-                    "trap_min",
-                    "trap_max",
-                    "loss_norm",
-                    "timestamp",
+                    "trap_powers", "solver_backend", "ghost_to_trap_med_ratio",
+                    "solver_runtime", "learning_rate", "maxiter", "aa_alpha",
+                    "hio_beta", "anneal_rate", "trap_med", "trap_mean",
+                    "trap_std", "trap_min", "trap_max", "loss_norm", "timestamp",
                 ]
             )
         )
 
         core = core.sort(
             [
-                "method",
-                "downsample_factor",
-                "smooth_phase",
-                "trap_type",
-                "initial_epsilon",
-                "random_seed",
+                "method", "downsample_factor", "smooth_phase",
+                "trap_type", "initial_epsilon", "random_seed",
             ]
         )
 
-        # NB rebuild job id
         core = core.with_columns(
             pl.struct(
                 [
-                    "method",
-                    "downsample_factor",
-                    "smooth_phase",
-                    "trap_type",
-                    "initial_epsilon",
+                    "method", "downsample_factor", "smooth_phase",
+                    "trap_type", "initial_epsilon",
                 ]
-            )
-            .rle_id()
-            .alias("job_id")
+            ).rle_id().alias("job_id")
         )
 
-        # TODO HACK random_seed as int upstream.
         core = core.with_columns(pl.col("random_seed").cast(pl.Int64))
         core = core.sort(["job_id", "random_seed"])
-        core = core.sort(["job_id"])
-
         core = core.with_row_index("index")
         core = core.select(["index", "job_id", pl.all().exclude("index", "job_id")])
 
-        # pprint(core)
-
-        first_job = core.filter(pl.col("job_id") == 0)
-
-        # print(first_job)
-
-        # TODO HARDCODE
         metric_cols = [
-            "uniformity",
-            "entropy",
-            "efficiency",
-            "efficiency_diffuse",
-            "efficiency_perimeter",
-            "pearson",
+            "uniformity", "entropy", "efficiency",
+            "efficiency_diffuse", "efficiency_perimeter", "pearson",
         ]
 
         desired_config_cols = list(Job._fields) + ["job_id", "trap_type"]
@@ -324,21 +280,16 @@ if __name__ == "__main__":
         reduced_core = (
             core.group_by(config_cols)
             .agg(
-                pl.col("random_seed")
-                .sort_by(target_metric, descending=True)
-                .first()
-                .alias("best_seed"),
+                pl.col("random_seed").sort_by(target_metric, descending=True).first().alias("best_seed"),
                 
-                # 1. Keep the metrics for the best seed
+                # Fetch the hashes associated with the best seed
+                pl.col("run_hash").sort_by(target_metric, descending=True).first().alias("run_hash"),
+                pl.col("solver_hash").sort_by(target_metric, descending=True).first().alias("solver_hash"),
+                
                 *[
-                    pl.col(m)
-                    .sort_by(target_metric, descending=True)
-                    .first()
-                    .alias(f"{m}")
+                    pl.col(m).sort_by(target_metric, descending=True).first().alias(f"{m}")
                     for m in metric_cols
                 ],
-                
-                # 2. Calculate fractional error in percent: (std / mean)
                 *[
                     (pl.col(m).std() / pl.col(m).mean()).alias(f"{m}_ferr") 
                     for m in metric_cols
@@ -348,67 +299,7 @@ if __name__ == "__main__":
         )
 
         reduced_core = reduced_core.select(["job_id", pl.all().exclude("job_id")])
-
         assert len(reduced_core) == 36
-
-        # pprint(reduced_core)
-        """
-        first_question = reduced_core.filter(
-            (pl.col("downsample_factor") == 1) &
-            (pl.col("trap_type") == "on_axis") &
-            (pl.col("initial_epsilon") == 0.0)
-        )
-
-        pprint(first_question)
-
-        def get_run_key(method_str: str, is_smooth: bool) -> str:
-            if method_str == "GD" and not is_smooth:
-                return "GD"
-            elif method_str == "GS" and not is_smooth:
-                return "GS"
-            elif method_str == "GD" and is_smooth:
-                return "GD-SMOOTH"
-            elif method_str == "GS" and is_smooth:
-                return "GS-SMOOTH"
-            return "UNKNOWN"
-
-        metrics_by_run = {}
-
-        for row in first_question.iter_rows(named=True):
-            method = row["method"]
-            smooth = row["smooth_phase"]
-            
-            run_key = get_run_key(method, smooth)
-            
-            run_metrics = {}
-            for m in metric_cols:
-                run_metrics[m] = row.get(m)
-
-                ferr_key = f"{m}_ferr"
-                if ferr_key in row:
-                     run_metrics[ferr_key] = row.get(ferr_key)
-                     
-            metrics_by_run[run_key] = run_metrics
-        
-        formatted_metrics_by_run = {
-            "GD": metrics_by_run["GD"],
-            "GS": metrics_by_run["GS"],
-            "GD-$\\mathcal{C}(\\phi)$": metrics_by_run["GD-SMOOTH"],
-            "GS-$\\mathcal{C}(\\phi)$": metrics_by_run["GS-SMOOTH"],
-        }
-
-        out_dir = Path("./runs_analysis")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        
-        PerformanceMetrics.write_tex_table(
-            filepath=out_dir / "first_question.tex",
-            metrics_by_run=formatted_metrics_by_run,
-            caption="GD vs GS w/o $\\mathcal{C}(\\phi)$",
-            label="tab:gd_vs_gs_smooth",
-            drop_values=False,
-            drop_description=True,
-        )
-        """
 
         for variant in table_variants:
             generate_comparison_table(
@@ -416,3 +307,30 @@ if __name__ == "__main__":
                 metric_cols=metric_cols,
                 **variant
             )
+
+        question_comments = [
+            "% 1) GD better than GS with/without smoothing @ on-axis, downsample_factor=1, initial_epsilon=0.00",
+            "% 2) GD better than GS with/without smoothing @ off-axis, downsample_factor=1, initial_epsilon=0.00",
+            "% 3) GD better than GS with/without smoothing @ on-axis, downsample_factor=1, initial_epsilon=0.05",
+            "% 4) GD sampled better than GD with/without smoothing @ on-axis, initial_epsilon=0.00"
+        ]
+
+        # TODO
+        merged_tex_lines = []
+        out_dir = Path("./runs_analysis")
+
+        for variant, comment in zip(table_variants, question_comments):
+            table_path = out_dir / variant["filename"]
+            
+            with open(table_path, "r") as f:
+                table_content = f.read()
+                
+            merged_tex_lines.append(comment)
+            merged_tex_lines.append(table_content)
+            merged_tex_lines.append("\n\\vspace{2em}\n")
+
+        merged_path = out_dir / "questions.tex"
+        with open(merged_path, "w") as f:
+            f.write("\n".join(merged_tex_lines))
+            
+        print(f"Merged tables written to {merged_path}")
