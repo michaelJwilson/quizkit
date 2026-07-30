@@ -130,7 +130,10 @@ class JaxHologramBackend:
         if method == "GS":
             self.final_phase, self.final_intensity, self.history = self.__run_gs()
         elif method == "GD":
-            self.final_phase, self.final_intensity, self.history = self.__run_gd()
+            if getattr(self.config, "downsample_factor", 1) > 1:
+                self.final_phase, self.final_intensity, self.history = self.__run_gd_bp_limited()
+            else:
+                self.final_phase, self.final_intensity, self.history = self.__run_gd()
         elif method == "AA":
             self.final_phase, self.final_intensity, self.history = self.__run_aa()
         elif method == "HIO":
@@ -414,6 +417,120 @@ class JaxHologramBackend:
             jnp.arange(self.config.maxiter),
         )
 
+        final_complex_ff_native = propagate_ff_native(
+            source_amp_native * jnp.exp(1j * final_phase_native)
+        )
+        final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
+
+        final_phase = jnp.fft.fftshift(final_phase_native)
+        final_intensity = jnp.fft.fftshift(final_intensity_native)
+        final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+        return np.asarray(final_phase), np.asarray(final_intensity), history
+
+    def __run_gd_bp_limited(self):
+        logger.info(f"Assuming a band-limited slm phase space.")
+
+        source_amp_native = jnp.fft.ifftshift(self.source_amp)
+        target_amp_native = jnp.fft.ifftshift(self.target_amp)
+        initial_phase_native = jnp.fft.ifftshift(self.initial_phase)
+
+        target_intensity_native = target_amp_native**2
+        full_shape = self.source_amp.shape
+
+        # A 2px Gaussian sigma implies a cutoff frequency corresponding to a ~4px period.
+        # A downsample factor of 2 provides 1 independent DOF per Nyquist interval.
+        ds_factor = 2
+        sub_shape = (full_shape[0] // ds_factor, full_shape[1] // ds_factor)
+
+        optimizer = optax.adam(learning_rate=self.config.learning_rate)
+
+        # TODO
+        initial_complex = jnp.exp(1j * initial_phase_native)
+        real_sub_init = jax.image.resize(jnp.real(initial_complex), sub_shape, method="bicubic")
+        imag_sub_init = jax.image.resize(jnp.imag(initial_complex), sub_shape, method="bicubic")
+        initial_sub_phase = jnp.angle(real_sub_init + 1j * imag_sub_init)
+
+        def loss_fn(sub_phase, normed=False):
+            # 1. Band-limited reconstruction (upsampling)
+            complex_sub = jnp.exp(1j * sub_phase)
+            real_full = jax.image.resize(jnp.real(complex_sub), full_shape, method="bicubic")
+            imag_full = jax.image.resize(jnp.imag(complex_sub), full_shape, method="bicubic")
+            
+            # Re-normalize to restore unit amplitude SLM modulation
+            complex_phasor_full = real_full + 1j * imag_full
+            complex_phasor_full /= (jnp.abs(complex_phasor_full) + 1e-12)
+
+            complex_nf = source_amp_native * complex_phasor_full
+            complex_ff = propagate_ff_native(complex_nf)
+            forward_intensity = jnp.abs(complex_ff) ** 2
+
+            if normed:
+                norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
+                norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
+                diff = norm_inferred - norm_target
+            else:
+                diff = forward_intensity - target_intensity_native
+
+            if self.config.loss_norm.upper() == "L1":
+                loss_val = jnp.mean(jnp.abs(diff))
+            elif self.config.loss_norm.upper() == "L2":
+                loss_val = jnp.mean(diff**2)
+            else:
+                raise ValueError(f"Unsupported loss norm: {self.config.loss_norm}")
+            
+            return loss_val, (forward_intensity, complex_phasor_full)
+
+        loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
+
+        @jax.jit
+        def gd_step(carry, step_idx):
+            sub_phase, opt_state, key = carry
+            key, subkey = jax.random.split(key)
+
+            (loss_val, (inferred_intensity, complex_phasor_full)), grads = loss_and_grad(sub_phase)
+            
+            updates, opt_state = optimizer.update(grads, opt_state, sub_phase)
+            new_sub_phase = optax.apply_updates(sub_phase, updates)
+
+            epsilon = self.config.initial_epsilon * jnp.exp(
+                -self.config.anneal_rate * step_idx
+            )
+
+            key_phase, key_mask = jax.random.split(subkey, 2)
+
+            # Random exploration applied to the sub-sampled macroscopic domains
+            random_phases = jax.random.uniform(
+                key_phase, new_sub_phase.shape, minval=-jnp.pi, maxval=jnp.pi
+            )
+
+            explore_mask = jax.random.uniform(key_mask, new_sub_phase.shape) < epsilon
+            new_sub_phase = jnp.where(explore_mask, random_phases, new_sub_phase)
+
+            new_sub_phase = jnp.mod(new_sub_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+            
+            metrics = compute_step_metrics_jax(
+                inferred_intensity,
+                target_intensity_native,
+                self.trap_labels,
+                self.num_traps,
+            )
+            metrics["loss"] = loss_val
+
+            return (new_sub_phase, opt_state, key), (metrics, complex_phasor_full)
+
+        opt_state = optimizer.init(initial_sub_phase)
+        step_key = jax.random.PRNGKey(self.config.random_seed)
+
+        (final_sub_phase, _, _), (history, final_complex_phasor_native) = jax.lax.scan(
+            gd_step,
+            (initial_sub_phase, opt_state, step_key),
+            jnp.arange(self.config.maxiter),
+        )
+
+        # Extract the final upsampled phase directly from the last scan execution
+        final_phase_native = jnp.angle(final_complex_phasor_native[-1])
+        
         final_complex_ff_native = propagate_ff_native(
             source_amp_native * jnp.exp(1j * final_phase_native)
         )

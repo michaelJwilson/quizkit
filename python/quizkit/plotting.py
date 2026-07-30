@@ -204,16 +204,17 @@ def plot_unraveled_trap_profiles(
         return
         
     # 2. Sort traps by max height (ascending, so the "mountains" grow left-to-right)
-    profiles_data.sort(key=lambda item: item["max_val"], reverse=True))
+    profiles_data.sort(key=lambda item: item["max_val"], reverse=True)
     
     # Global max is now the last item in the sorted list
     global_max = profiles_data[-1]["max_val"]
     
     # 3. Render the staggered plot
     fig_prof, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-    
-    x_stagger_step = 0.5 * wx
-    y_stagger_step = 0.5 * wy
+
+    # TODO
+    x_stagger_step = wx
+    y_stagger_step = wy
     
     for rank, item in enumerate(profiles_data):
         # Top Row: X Profiles
