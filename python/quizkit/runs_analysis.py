@@ -24,18 +24,18 @@ class Job(NamedTuple):
 # TODO
 # 
 # job
-# method, random_seed, downsample_factor, smooth_phase, trap_config, initial_epsilon
+#     method, random_seed, downsample_factor, smooth_phase, trap_config, initial_epsilon
 # 
 # metrics:
-# uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
-# psf_wx, psf_wy, runtime
+#     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
+#     psf_wx, psf_wy, runtime
 # 
 # to answer:
-# GD better than GS with/without smoothing: 
-# Downsampling GD competitive/betta than not
-# Phase dropout (initial_epsilon) improves GD performance
-# Multiple initializations (num_random_seeds) improves GD performance
-# Comparison of on-axis vs off-axis traps
+#     GD better than GS with/without smoothing: 
+#     Downsampling GD competitive/betta than not
+#     Phase dropout (initial_epsilon) improves GD performance
+#     Multiple initializations (num_random_seeds) improves GD performance
+#     Comparison of on-axis vs off-axis traps
 # 
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
