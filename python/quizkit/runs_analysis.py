@@ -19,24 +19,6 @@ class Job(NamedTuple):
     trap_config: TrapConfig
     initial_epsilon: float
 
-
-# TODO
-#
-# job
-#     job_id, method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
-#
-# metrics:
-#     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
-#     psf_wx, psf_wy, runtime
-#
-# to answer:
-#     with metric for best seed in job & metric errors from std. across random seeds.  assumes metrics bound by (0, 1)
-#         1) GD better than GS @ downsample_factor=1, on-axis @ initial_epsilon=0.0, with/without smoothing
-#         2) on-axis / off-axis
-#         3) on-axis with downsampling
-#         4) on-axis with phase dropout (initial_epsilon==0.05) better than without.
-#
-#
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
     smooth_phases = (False, True)
@@ -133,6 +115,122 @@ def load_data(results_dir: str = "./results") -> pl.DataFrame:
     df = df.select(["job_id", "job", "metrics", "run_info"])
 
     return df
+
+
+def get_question_key(method_str: str, is_smooth: bool) -> str:
+    if method_str == "GD" and not is_smooth: return "GD"
+    if method_str == "GS" and not is_smooth: return "GS"
+    if method_str == "GD" and is_smooth:     return "GD-SMOOTH"
+    if method_str == "GS" and is_smooth:     return "GS-SMOOTH"
+    return "UNKNOWN"
+
+def generate_comparison_table(
+    df: pl.DataFrame,
+    metric_cols: list[str],
+    trap_type: str,
+    ds_factor: int,
+    epsilon: float,
+    filename: str,
+    caption: str,
+    label: str,
+) -> None:
+    """Filters the dataframe and writes a specialized LaTeX table for GD vs GS."""
+    
+    # Filter for the specific experimental conditions
+    subset = df.filter(
+        (pl.col("downsample_factor") == ds_factor) &
+        (pl.col("trap_type") == trap_type) &
+        (pl.col("initial_epsilon") == epsilon)
+    )
+
+    metrics_by_run = {}
+
+    for row in subset.iter_rows(named=True):
+        run_key = get_question_key(row["method"], row["smooth_phase"])
+        
+        run_metrics = {}
+        for m in metric_cols:
+            if m in row:
+                run_metrics[m] = row[m]
+
+            ferr_key = f"{m}_ferr"
+            if ferr_key in row:
+                run_metrics[ferr_key] = row[ferr_key]
+                 
+        metrics_by_run[run_key] = run_metrics
+    
+    # Map to LaTeX-friendly names. Using .get(..., {}) protects against missing data.
+    formatted_metrics_by_run = {
+        "GD": metrics_by_run.get("GD", {}),
+        "GS": metrics_by_run.get("GS", {}),
+        "GD-$\\mathcal{C}(\\phi)$": metrics_by_run.get("GD-SMOOTH", {}),
+        "GS-$\\mathcal{C}(\\phi)$": metrics_by_run.get("GS-SMOOTH", {}),
+    }
+
+    out_dir = Path("./runs_analysis")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    PerformanceMetrics.write_tex_table(
+        filepath=out_dir / filename,
+        metrics_by_run=formatted_metrics_by_run,
+        caption=caption,
+        label=label,
+        drop_values=False,
+        drop_description=True,
+    )
+
+# TODO
+#
+# job
+#     job_id, method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
+#
+# metrics:
+#     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
+#     psf_wx, psf_wy, runtime
+#
+# to answer:
+#     baseline and single hyper-parameter edit
+#     with metric for best seed in job & metric errors from std. across random seeds.  assumes metrics bound by (0, 1)
+#         1) GD better than GS with/without smoothing @ on-axis,  downsample_factor=1, initial_epsilon=0.00, 
+#         2) GD better than GS with/without smoothing @ off-axis, downsample_factor=1, initial_epsilon=0.00,
+#         3) GD better than GS with/without smoothing @ on-axis,  downsample_factor=1, initial_epsilon=0.05,
+#         4) GD sampled better than GD with/without smoothing @ on-axis, initial_epsilon=0.00, 
+#
+#
+table_variants = [
+    {
+        "trap_type": "on_axis", 
+        "ds_factor": 1, 
+        "epsilon": 0.00,
+        "filename": "first_question.tex",
+        "caption": r"GD vs GS w/o $\mathcal{C}(\phi)$",
+        "label": "tab:gd_vs_gs_on_axis_ds1_eps00"
+    },
+    {
+        "trap_type": "off_axis", 
+        "ds_factor": 1, 
+        "epsilon": 0.00,
+        "filename": "second_question.tex",
+        "caption": r"GD vs GS w/o $\mathcal{C}(\phi)$: off-axis",
+        "label": "tab:gd_vs_gs_off_axis_ds1_eps00"
+    },
+    {
+        "trap_type": "on_axis", 
+        "ds_factor": 1, 
+        "epsilon": 0.05,
+        "filename": "third_question.tex",
+        "caption": r"GD vs GS w/o $\mathcal{C}(\phi)$: $\epsilon$-greedy",
+        "label": "tab:gd_vs_gs_on_axis_ds1_eps05"
+    },
+    {
+        "trap_type": "on_axis", 
+        "ds_factor": 4, 
+        "epsilon": 0.00,
+        "filename": "fourth_question.tex",
+        "caption": r"GD vs GS w/o $\mathcal{C}(\phi)$: downsampled",
+        "label": "tab:gd_vs_gs_on_axis_ds4_eps00"
+    },
+]
 
 
 if __name__ == "__main__":
@@ -254,7 +352,7 @@ if __name__ == "__main__":
         assert len(reduced_core) == 36
 
         # pprint(reduced_core)
-
+        """
         first_question = reduced_core.filter(
             (pl.col("downsample_factor") == 1) &
             (pl.col("trap_type") == "on_axis") &
@@ -310,3 +408,11 @@ if __name__ == "__main__":
             drop_values=False,
             drop_description=True,
         )
+        """
+
+        for variant in table_variants:
+            generate_comparison_table(
+                df=reduced_core,
+                metric_cols=metric_cols,
+                **variant
+            )
