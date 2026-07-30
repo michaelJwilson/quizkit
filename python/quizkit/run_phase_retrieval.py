@@ -349,7 +349,7 @@ class PerformanceMetrics(ConfigMixin):
         "uniformity": "Michelson uniformity of integrated trap powers",
         "entropy": "Shannon entropy of normalized integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
-        "efficiency_diffuse": "Fraction of forward power within the (best-fit) forward psf target trap regions", # TODO
+        "efficiency_diffuse": r"Fraction of forward power within the target trap regions $\circledast$ (best-fit) forward psf", # TODO
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
@@ -514,50 +514,89 @@ class PerformanceMetrics(ConfigMixin):
         cls,
         filepath: str | Path,
         metrics_by_run: dict[str, dict],
-        caption: str = "Computed performance metrics for the optimized SLM phase.",
+        caption: str | None = None,
         label: str = "tab:hologram_metrics",
+        drop_values: bool = False,
+        drop_description: bool = False,
     ) -> None:
+        
+        # Dynamically set the default caption based on the context
+        if caption is None:
+            caption = (
+                "Defined metrics." if drop_values 
+                else "Computed performance metrics for the optimized SLM phase."
+            )
+
+        metrics_by_run = metrics_by_run or {}
         run_keys = list(metrics_by_run.keys())
-        if not run_keys:
+        
+        # Allow generating a pure description table even if no runs are provided
+        if not run_keys and not drop_values:
             logger.warning("No metrics provided to write_tex_table.")
             return
 
         n_runs = len(run_keys)
 
-        # TODO
-        # headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
-        headers = [f"\\textbf{{{key}}}" for key in run_keys]
+        # 1. Dynamically build column definitions and headers
+        cols_def = ["l"]
+        header_parts = ["\\textbf{Metric Key}"]
 
-        c_cols = "c" * n_runs
-        tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
+        if not drop_values:
+            headers = [f"\\textbf{{{key}}}" for key in run_keys]
+            cols_def.extend(["c"] * n_runs)
+            header_parts.extend(headers)
+            
+        if not drop_description:
+            cols_def.append("p{11.5cm}")
+            header_parts.append("\\textbf{Description}")
 
-        header_row = (
-            " & ".join(["\\textbf{Metric Key}"] + headers + ["\\textbf{Description}"])
-            + " \\\\"
-        )
+        tabular_def = f"\\begin{{tabular}}{{{''.join(cols_def)}}}"
+        header_row = " & ".join(header_parts) + " \\\\"
 
-        metric_names = [
-            k for k in metrics_by_run[run_keys[0]].keys() if k != "trap_powers"
-        ]
+        # 2. Select metric keys based on the drop_values flag
+        if drop_values:
+            # Pull all fields defined on the dataclass itself, excluding private/ClassVar fields
+            metric_names = [
+                k for k in cls.__dataclass_fields__.keys() 
+                if k != "trap_powers" and not k.startswith("_")
+            ]
+        else:
+            # Pull only the metrics present in the provided dictionary
+            metric_names = [
+                k for k in metrics_by_run[run_keys[0]].keys() 
+                if k != "trap_powers" and not str(k).endswith("_ferr")
+            ]
 
+        def fmt_num(v: float) -> str:
+            return f"{v:.3f}"
+
+        # 3. Dynamically build rows
         rows = []
         for m_name in metric_names:
             escaped_m_name = m_name.replace("_", "\\_")
             row_parts = [f"\\texttt{{{escaped_m_name}}}"]
 
-            for key in run_keys:
-                val = metrics_by_run[key].get(m_name, np.nan)
+            if not drop_values:
+                for key in run_keys:
+                    val = metrics_by_run[key].get(m_name, np.nan)
+                    ferr = metrics_by_run[key].get(f"{m_name}_ferr", None)
 
-                if isinstance(val, float) and not np.isnan(val):
-                    if val != 0 and (abs(val) < 1e-3 or abs(val) > 1e4):
-                        row_parts.append(f"{val:.2e}")
+                    if isinstance(val, float) and not np.isnan(val):
+                        val_str = fmt_num(val)
+                        
+                        if isinstance(ferr, float) and not np.isnan(ferr):
+                            abs_err = abs(val * ferr)
+                            err_str = fmt_num(abs_err)
+                            row_parts.append(f"${val_str} \\pm {err_str}$")
+                        else:
+                            row_parts.append(val_str)
                     else:
-                        row_parts.append(f"{val:.4f}")
-                else:
-                    row_parts.append(str(val))
+                        row_parts.append(str(val))
 
-            desc = cls._DESCRIPTIONS.get(m_name, "")
-            row_parts.append(desc)
+            if not drop_description:
+                desc = cls._DESCRIPTIONS.get(m_name, "")
+                row_parts.append(desc)
+                
             rows.append(" & ".join(row_parts) + " \\\\")
 
         latex = f"""\\begin{{table}}[htbp]
@@ -581,7 +620,6 @@ class PerformanceMetrics(ConfigMixin):
 
         with open(out_path, "w") as f:
             f.write(latex)
-
 
 class HologramExperimentSolver:
     def __init__(self, experiment: HologramExperiment, config: SolverConfig):

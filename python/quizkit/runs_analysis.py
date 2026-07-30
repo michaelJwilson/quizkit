@@ -215,9 +215,9 @@ if __name__ == "__main__":
             "uniformity",
             "entropy",
             "efficiency",
-            "pearson",
             "efficiency_diffuse",
             "efficiency_perimeter",
+            "pearson",
         ]
 
         desired_config_cols = list(Job._fields) + ["job_id", "trap_type"]
@@ -284,11 +284,11 @@ if __name__ == "__main__":
             
             run_metrics = {}
             for m in metric_cols:
-                # If your columns have "_best", extract the raw metric name
-                # If they don't, you can just use `row[m]`
-                val = row.get(m)
-                if val is not None:
-                     run_metrics[m] = val
+                run_metrics[m] = row.get(m)
+
+                ferr_key = f"{m}_ferr"
+                if ferr_key in row:
+                     run_metrics[ferr_key] = row.get(ferr_key)
                      
             metrics_by_run[run_key] = run_metrics
         
@@ -305,6 +305,7 @@ if __name__ == "__main__":
         PerformanceMetrics.write_tex_table(
             filepath=out_dir / "first_question.tex",
             metrics_by_run=formatted_metrics_by_run,
-            caption="Comparison of Gradient Descent (GD) and Gerchberg-Saxton (GS) with and without phase smoothing $\\mathcal{C}(\\phi)$. Evaluated on-axis with downsample factor 1 and zero initial epsilon.",
-            label="tab:gd_vs_gs_smooth"
+            # caption="Comparison of Gradient Descent (GD) and Gerchberg-Saxton (GS) with and without phase smoothing $\\mathcal{C}(\\phi)$. Evaluated on-axis with downsample factor 1 and zero initial epsilon.",
+            label="tab:gd_vs_gs_smooth",
+            drop_values=True,
         )
