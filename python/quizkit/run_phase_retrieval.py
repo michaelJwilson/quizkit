@@ -915,7 +915,7 @@ def run_phase_retrieval():
         for random_seed in np.arange(num_random_seeds):
             random_seed = int(42 + random_seed)
 
-            for smooth_phase in (True,):
+            for smooth_phase in (False,):
                 solver_config = SolverConfig(
                     method=method,  # {"GS", "GD", "AA", "HIO"}
                     maxiter=200,

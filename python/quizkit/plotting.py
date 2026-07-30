@@ -206,15 +206,15 @@ def plot_unraveled_trap_profiles(
     # 2. Sort traps by max height (ascending, so the "mountains" grow left-to-right)
     profiles_data.sort(key=lambda item: item["max_val"], reverse=True)
     
-    # Global max is now the last item in the sorted list
-    global_max = profiles_data[-1]["max_val"]
+    # Global max is now the first item in the sorted list
+    global_max = profiles_data[0]["max_val"]
     
     # 3. Render the staggered plot
     fig_prof, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
 
     # TODO
-    x_stagger_step = wx
-    y_stagger_step = wy
+    x_stagger_step = 4 * wx
+    y_stagger_step = 4 * wy
     
     for rank, item in enumerate(profiles_data):
         # Top Row: X Profiles
@@ -223,8 +223,8 @@ def plot_unraveled_trap_profiles(
         # Stagger on the X-axis
         x_shifted_x = x_span + (rank * x_stagger_step)
         
-        ax1.plot(x_shifted_x, prof_x_norm, color="cyan", alpha=0.8, linewidth=1.0)
-        ax1.fill_between(x_shifted_x, 0, prof_x_norm, color="cyan", alpha=0.05)
+        ax1.plot(x_shifted_x, prof_x_norm, color="k", alpha=0.75, linewidth=1.0)
+        # ax1.fill_between(x_shifted_x, 0, prof_x_norm, color="cyan", alpha=0.05)
         
         # Bottom Row: Y Profiles
         prof_y_norm = item["prof_y"] / (global_max + 1e-12)
@@ -232,16 +232,16 @@ def plot_unraveled_trap_profiles(
         # Stagger on the X-axis (even though it's a Y-profile, we spread them horizontally for the viewer)
         x_shifted_y = y_span + (rank * y_stagger_step)
         
-        ax2.plot(x_shifted_y, prof_y_norm, color="magenta", alpha=0.8, linewidth=1.0)
-        ax2.fill_between(x_shifted_y, 0, prof_y_norm, color="magenta", alpha=0.05)
+        ax2.plot(x_shifted_y, prof_y_norm, color="k", alpha=0.75, linewidth=1.0)
+        # ax2.fill_between(x_shifted_y, 0, prof_y_norm, color="magenta", alpha=0.05)
 
-    ax1.set_title("Trap x-profile")
-    ax1.set_xlabel(rf"Local X Distance $+ (Rank \times {x_stagger_step:.2f})$")
+    ax1.set_title("Trap $x$-profile")
+    ax1.set_xlabel(r"$x | y$ [px]")
     ax1.set_ylabel("Intensity [a.u.]")
     ax1.set_ylim(bottom=0)
     
-    ax2.set_title("Trap y-profile")
-    ax2.set_xlabel(rf"Local Y Distance $+ (Rank \times {y_stagger_step:.2f})$")
+    ax2.set_title("Trap $y$-profile")
+    ax2.set_xlabel(r"$y | x$ [px]")
     ax2.set_ylabel("Intensity [a.u.]")
     ax2.set_ylim(bottom=0)
     
