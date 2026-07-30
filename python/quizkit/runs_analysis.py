@@ -134,6 +134,8 @@ def load_data(results_dir: str = "./results") -> pl.DataFrame:
 
 
 if __name__ == "__main__":
+    target_metric = "uniformity"
+
     jobs = construct_jobs()
     data = load_data()
 
@@ -200,4 +202,33 @@ if __name__ == "__main__":
 
         print(first_job)
 
-        # pprint(data.schema["metrics"], expand_all=True)
+        # TODO HARDCODE
+        metric_cols = [
+            "uniformity", "entropy", "efficiency", "pearson", "efficiency_diffuse", "efficiency_perimeter", "psf_wx", "psf_wy", "runtime",
+        ]
+
+        desired_config_cols = list(Job._fields) + ["job_id", "trap_type"]
+        config_cols = [c for c in desired_config_cols if c in core.columns]
+
+        reduced_core = core.group_by(config_cols).agg(
+            pl.col("random_seed")
+            .sort_by(target_metric, descending=True)
+            .first()
+            .alias("best_seed"),
+            
+            *[
+                pl.col(m)
+                .sort_by(target_metric, descending=True)
+                .first()
+                .alias(f"{m}")
+                for m in metric_cols
+            ],
+            
+            *[
+                pl.col(m).std().alias(f"{m}_std")
+                for m in metric_cols
+            ]
+        ).sort("job_id")
+        reduced_core = reduced_core.select(["job_id", pl.all().exclude("job_id")])
+
+        pprint(reduced_core)
