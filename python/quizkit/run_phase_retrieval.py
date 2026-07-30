@@ -921,7 +921,7 @@ class Job(NamedTuple):
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
     solver_backends = ("jax",)
-    num_random_seeds = 1
+    num_random_seeds = 10
     downsample_factors = (1, 4)
     smooth_phases = (False, True)
     initial_epsilons = (0.0, 0.05, 0.1)
@@ -962,18 +962,19 @@ def run_phase_retrieval():
     jobs = construct_jobs()
     slm_shape = (1200, 1920)  # (height, width) in pixels,
 
-    # TODO HACK
+    """
     jobs = (
         Job(
             method="GD",
             solver_backend="jax",
             num_random_seeds=1,
-            downsample_factor=1,
+            downsample_factor=4,
             smooth_phase=True,
             trap_config=TrapConfigs.ON_AXIS.to_config(),
             initial_epsilon=0.05,
         ),
     )
+    """
 
     for job in jobs:
         try:
@@ -1023,7 +1024,7 @@ def run_phase_retrieval():
                     caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
                 )
 
-                solver.update_aim(experiment_name=solver_config.hash)
+                # solver.update_aim(experiment_name=solver_config.hash)
 
         except Exception as e:
             logger.error(
