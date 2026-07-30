@@ -21,7 +21,7 @@ from quizkit.run_phase_retrieval import PerformanceMetrics
 st.set_page_config(page_title="Artifact Analysis", layout="wide")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--base_dir", type=str, default="./results")
+parser.add_argument("--base_dir", type=str, default="./results_073026")
 parser.add_argument("--run_hash", type=str, default=None)
 parser.add_argument("--solver_hash", type=str, default=None)
 

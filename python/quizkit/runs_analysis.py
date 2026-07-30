@@ -221,7 +221,7 @@ table_variants = [
         "ds_factor": 1, # Passed but overridden by 'downsample' mode logic picking 1 & 4
         "epsilon": 0.00,
         "filename": "fourth_question.tex",
-        "caption": r"GD (DS=1) vs GD (DS=4) w/o $\mathcal{C}(\phi)$: band-limited reconstrucion",
+        "caption": r"GD vs GD 1/4 w/o $\mathcal{C}(\phi)$: band-limited reconstrucion",
         "label": "tab:gd_vs_gd_on_axis_ds4_eps00"
     },
 ]
