@@ -139,7 +139,7 @@ if __name__ == "__main__":
     target_metric = "uniformity"
 
     jobs = construct_jobs()
-    data = load_data()
+    data = load_data("./results_073026")
 
     if not data.is_empty():
         # NB job_id (i64), job (struct), metrics (struct), run_info (struct)
