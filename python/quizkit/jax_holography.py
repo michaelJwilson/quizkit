@@ -431,10 +431,10 @@ class JaxHologramBackend:
         final_phase_native = jnp.angle(final_complex_phasor_native)
         # TODO
         if self.config.smooth_phase:
-             complex_phase = jnp.exp(1j * final_phase_native)
-             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+            complex_phase = jnp.exp(1j * final_phase_native)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
         
-             final_phase_native = jnp.angle(blurred_complex)
+            final_phase_native = jnp.angle(blurred_complex)
 
         final_complex_ff_native = propagate_ff_native(
             source_amp_native * jnp.exp(1j * final_phase_native)
@@ -585,10 +585,10 @@ class JaxHologramBackend:
 
         
         if self.config.smooth_phase:
-             complex_phase = jnp.exp(1j * final_phase_native)
-             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
+            complex_phase = jnp.exp(1j * final_phase_native)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
         
-             final_phase_native = jnp.angle(blurred_complex)
+            final_phase_native = jnp.angle(blurred_complex)
 
         final_phase = jnp.fft.fftshift(final_phase_native)
         final_intensity = jnp.fft.fftshift(final_intensity_native)
