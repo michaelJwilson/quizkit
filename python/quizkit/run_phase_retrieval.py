@@ -920,11 +920,11 @@ class Job(NamedTuple):
 
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
-    solver_backends = ("jax",)
-    num_random_seeds = 10
-    downsample_factors = (1, 4)
     smooth_phases = (False, True)
+    downsample_factors = (1, 4)
     initial_epsilons = (0.0, 0.05, 0.1)
+    num_random_seeds = 10
+    solver_backends = ("jax",)
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
