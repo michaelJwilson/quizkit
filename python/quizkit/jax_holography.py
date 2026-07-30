@@ -428,8 +428,8 @@ class JaxHologramBackend:
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
 
-    def __run_gd_bp_limited(self):
-        logger.info(f"Assuming a band-limited slm phase space.")
+    def __run_gd_bp_limited(self, ds_factor=4, interp_method="lanczos3"):
+        logger.info(f"Assuming a band-limited slm phase space with in-loop physical validation.")
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)
@@ -437,33 +437,30 @@ class JaxHologramBackend:
 
         target_intensity_native = target_amp_native**2
         full_shape = self.source_amp.shape
-
-        # A 2px Gaussian sigma implies a cutoff frequency corresponding to a ~4px period.
-        # A downsample factor of 2 provides 1 independent DOF per Nyquist interval.
-        ds_factor = 2
         sub_shape = (full_shape[0] // ds_factor, full_shape[1] // ds_factor)
 
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
-
-        # TODO
-        initial_complex = jnp.exp(1j * initial_phase_native)
-        real_sub_init = jax.image.resize(jnp.real(initial_complex), sub_shape, method="bicubic")
-        imag_sub_init = jax.image.resize(jnp.imag(initial_complex), sub_shape, method="bicubic")
-        initial_sub_phase = jnp.angle(real_sub_init + 1j * imag_sub_init)
-
+        
         blur_otf = get_gaussian_blur_otf(
             self.source_amp.shape, self.config.smooth_sigma
         )
 
+        initial_complex = jnp.exp(1j * initial_phase_native)
+        # Upgrade to lanczos3 for a cleaner frequency cutoff
+        real_sub_init = jax.image.resize(jnp.real(initial_complex), sub_shape, method=interp_method)
+        imag_sub_init = jax.image.resize(jnp.imag(initial_complex), sub_shape, method=interp_method)
+        initial_sub_phase = jnp.angle(real_sub_init + 1j * imag_sub_init)
+
         def loss_fn(sub_phase, normed=False):
-            # 1. Band-limited reconstruction (upsampling)
+            # 1. Band-limited reconstruction (upsampling) via Lanczos
             complex_sub = jnp.exp(1j * sub_phase)
-            real_full = jax.image.resize(jnp.real(complex_sub), full_shape, method="bicubic")
-            imag_full = jax.image.resize(jnp.imag(complex_sub), full_shape, method="bicubic")
+            real_full = jax.image.resize(jnp.real(complex_sub), full_shape, method=interp_method)
+            imag_full = jax.image.resize(jnp.imag(complex_sub), full_shape, method=interp_method)
             
-            # Re-normalize to restore unit amplitude SLM modulation
             complex_phasor_full = real_full + 1j * imag_full
-            complex_phasor_full /= (jnp.abs(complex_phasor_full) + 1e-12)
+            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phasor_full))
+            
+            complex_phasor_full = blurred_complex / (jnp.abs(blurred_complex) + 1e-12)
 
             complex_nf = source_amp_native * complex_phasor_full
             complex_ff = propagate_ff_native(complex_nf)
@@ -503,7 +500,6 @@ class JaxHologramBackend:
 
             key_phase, key_mask = jax.random.split(subkey, 2)
 
-            # Random exploration applied to the sub-sampled macroscopic domains
             random_phases = jax.random.uniform(
                 key_phase, new_sub_phase.shape, minval=-jnp.pi, maxval=jnp.pi
             )

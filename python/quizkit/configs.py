@@ -108,7 +108,7 @@ class SolverConfig(ConfigMixin):
     smooth_sigma: int = 2  # pixels
 
     # NB 
-    downsample_factor: int = 2
+    downsample_factor: int = 4
 
     loss_norm: str = "L2"  # {"L1", "L2"}
     learning_rate: float = 0.1
