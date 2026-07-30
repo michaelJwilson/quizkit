@@ -10,9 +10,7 @@ from typing import Any, ClassVar, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
-import matplotlib.pyplot as plt
-from aim import Run, Figure
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from aim import Run
 from rich.pretty import pprint
 from scipy.ndimage import binary_dilation, find_objects, label
 from scipy.optimize import curve_fit
@@ -41,8 +39,7 @@ import aim.ext.cleanup
 atexit.unregister(aim.ext.cleanup.AutoClean.cleanup)
 
 """
-GS algorithm application via slm suite, see
-
+for slm suite, see
 https://slmsuite.readthedocs.io/en/latest/_examples/computational_holography.html#Basic-Image-Formation
 """
 
@@ -125,7 +122,7 @@ def reduce_stack_similar_crops(
 
     return reduced_profile
 
-
+# DEPRECATE
 def extract_background_artifacts(
     forward_intensity,
     trap_labels,
