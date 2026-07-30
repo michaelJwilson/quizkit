@@ -5,6 +5,7 @@ from rich.pretty import pprint
 from pathlib import Path
 from typing import NamedTuple, Tuple
 from quizkit.configs import TrapConfig, TrapConfigs
+from quizkit.run_phase_retrieval import PerformanceMetrics
 
 pl.Config.set_tbl_cols(-1)
 
@@ -21,19 +22,19 @@ class Job(NamedTuple):
 # TODO
 # 
 # job
-#     job_id,method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
+#     job_id, method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
 # 
 # metrics:
 #     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
 #     psf_wx, psf_wy, runtime
 # 
 # to answer:
-#     GD better than GS with/without smoothing: 
-#     Downsampling GD competitive/betta than not
-#     Phase dropout (initial_epsilon) improves GD performance
-#     Multiple initializations (num_random_seeds) improves GD performance
-#     Comparison of on-axis vs off-axis traps
-# 
+#     GD better than GS with/without smoothing (with metric for best seed in job & metric errors from std. across random seeds):
+#         on-axis / off-axis
+#         on-axis with downsampling
+#         on-axis with phase dropout (initial_epsilon==0.05) better than without. 
+#        
+#
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
     smooth_phases = (False, True)
@@ -166,12 +167,12 @@ if __name__ == "__main__":
         )
 
         core = core.sort([
-            "method",
-            "downsample_factor",
-            "smooth_phase",
-            "trap_type",    
+            "method", 
+            "downsample_factor", 
+            "smooth_phase", 
+            "trap_type", 
             "initial_epsilon",
-            "random_seed"                                 
+            "random_seed"
         ])
 
         # NB rebuild job id
@@ -182,9 +183,16 @@ if __name__ == "__main__":
                 "smooth_phase", 
                 "trap_type", 
                 "initial_epsilon",
-                "random_seed", 
             ]).rle_id().alias("job_id")
         )
+
+        # TODO HACK random_seed as int upstream.
+        core = core.with_columns(pl.col("random_seed").cast(pl.Int64))
+        core = core.sort(["job_id", "random_seed"])
+        core = core.sort(["job_id"])
+
+        core = core.with_row_index("index")
+        core = core.select(["index", "job_id", pl.all().exclude("index", "job_id")])
 
         pprint(core)
 
