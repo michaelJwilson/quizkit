@@ -539,7 +539,7 @@ class PerformanceMetrics(ConfigMixin):
 
         # 1. Dynamically build column definitions and headers
         cols_def = ["l"]
-        header_parts = ["\\textbf{Metric Key}"]
+        header_parts = ["\\textbf{Metric}"]
 
         if not drop_values:
             headers = [f"\\textbf{{{key}}}" for key in run_keys]

@@ -305,7 +305,8 @@ if __name__ == "__main__":
         PerformanceMetrics.write_tex_table(
             filepath=out_dir / "first_question.tex",
             metrics_by_run=formatted_metrics_by_run,
-            # caption="Comparison of Gradient Descent (GD) and Gerchberg-Saxton (GS) with and without phase smoothing $\\mathcal{C}(\\phi)$. Evaluated on-axis with downsample factor 1 and zero initial epsilon.",
+            caption="GD vs GS w/o $\\mathcal{C}(\\phi)$",
             label="tab:gd_vs_gs_smooth",
-            drop_values=True,
+            drop_values=False,
+            drop_description=True,
         )
