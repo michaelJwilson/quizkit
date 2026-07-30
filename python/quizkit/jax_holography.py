@@ -132,7 +132,7 @@ class JaxHologramBackend:
         elif method == "GD":
             if getattr(self.config, "downsample_factor", 1) > 1:
                 self.final_phase, self.final_intensity, self.history = (
-                    self.__run_gd_bp_limited()
+                    self.__run_gd_bp_limited(downsample_factor=self.config.downsample_factor)
                 )
             else:
                 self.final_phase, self.final_intensity, self.history = self.__run_gd()
@@ -430,7 +430,7 @@ class JaxHologramBackend:
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
 
-    def __run_gd_bp_limited(self, ds_factor=8, interp_method="lanczos3"):
+    def __run_gd_bp_limited(self, downsample_factor=4, interp_method="lanczos3"):
         logger.warning(f"Assuming a band-limited slm phase space.")
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
@@ -439,7 +439,7 @@ class JaxHologramBackend:
 
         target_intensity_native = target_amp_native**2
         full_shape = self.source_amp.shape
-        sub_shape = (full_shape[0] // ds_factor, full_shape[1] // ds_factor)
+        sub_shape = (full_shape[0] // downsample_factor, full_shape[1] // downsample_factor)
 
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
 
