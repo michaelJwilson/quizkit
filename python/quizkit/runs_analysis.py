@@ -19,21 +19,23 @@ class Job(NamedTuple):
     trap_config: TrapConfig
     initial_epsilon: float
 
+
 # TODO
-# 
+#
 # job
 #     job_id, method, smooth_phase, downsample_factor, random_seed, initial_epsilon, trap_type,
-# 
+#
 # metrics:
 #     uniformity, entropy, efficiency, efficiency_diffuse, efficiency_perimeter, pearson,
 #     psf_wx, psf_wy, runtime
-# 
+#
 # to answer:
-#     GD better than GS with/without smoothing (with metric for best seed in job & metric errors from std. across random seeds):
-#         on-axis / off-axis
-#         on-axis with downsampling
-#         on-axis with phase dropout (initial_epsilon==0.05) better than without. 
-#        
+#     with metric for best seed in job & metric errors from std. across random seeds.  assumes metrics bound by (0, 1)
+#         1) GD better than GS @ downsample_factor=1, on-axis @ initial_epsilon=0.0, with/without smoothing
+#         2) on-axis / off-axis
+#         3) on-axis with downsampling
+#         4) on-axis with phase dropout (initial_epsilon==0.05) better than without.
+#
 #
 def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
@@ -153,7 +155,7 @@ if __name__ == "__main__":
                     "ghost_to_trap_med_ratio",
                     "solver_runtime",
                     "learning_rate",
-                    "maxiter", 
+                    "maxiter",
                     "aa_alpha",
                     "hio_beta",
                     "anneal_rate",
@@ -162,30 +164,36 @@ if __name__ == "__main__":
                     "trap_std",
                     "trap_min",
                     "trap_max",
-                    "loss_norm", 
+                    "loss_norm",
                     "timestamp",
                 ]
             )
         )
 
-        core = core.sort([
-            "method", 
-            "downsample_factor", 
-            "smooth_phase", 
-            "trap_type", 
-            "initial_epsilon",
-            "random_seed"
-        ])
+        core = core.sort(
+            [
+                "method",
+                "downsample_factor",
+                "smooth_phase",
+                "trap_type",
+                "initial_epsilon",
+                "random_seed",
+            ]
+        )
 
         # NB rebuild job id
         core = core.with_columns(
-            pl.struct([
-                "method", 
-                "downsample_factor", 
-                "smooth_phase", 
-                "trap_type", 
-                "initial_epsilon",
-            ]).rle_id().alias("job_id")
+            pl.struct(
+                [
+                    "method",
+                    "downsample_factor",
+                    "smooth_phase",
+                    "trap_type",
+                    "initial_epsilon",
+                ]
+            )
+            .rle_id()
+            .alias("job_id")
         )
 
         # TODO HACK random_seed as int upstream.
@@ -196,39 +204,61 @@ if __name__ == "__main__":
         core = core.with_row_index("index")
         core = core.select(["index", "job_id", pl.all().exclude("index", "job_id")])
 
-        pprint(core)
+        # pprint(core)
 
         first_job = core.filter(pl.col("job_id") == 0)
 
-        print(first_job)
+        # print(first_job)
 
         # TODO HARDCODE
         metric_cols = [
-            "uniformity", "entropy", "efficiency", "pearson", "efficiency_diffuse", "efficiency_perimeter", "psf_wx", "psf_wy", "runtime",
+            "uniformity",
+            "entropy",
+            "efficiency",
+            "pearson",
+            "efficiency_diffuse",
+            "efficiency_perimeter",
         ]
 
         desired_config_cols = list(Job._fields) + ["job_id", "trap_type"]
         config_cols = [c for c in desired_config_cols if c in core.columns]
 
-        reduced_core = core.group_by(config_cols).agg(
-            pl.col("random_seed")
-            .sort_by(target_metric, descending=True)
-            .first()
-            .alias("best_seed"),
-            
-            *[
-                pl.col(m)
+        reduced_core = (
+            core.group_by(config_cols)
+            .agg(
+                pl.col("random_seed")
                 .sort_by(target_metric, descending=True)
                 .first()
-                .alias(f"{m}")
-                for m in metric_cols
-            ],
-            
-            *[
-                pl.col(m).std().alias(f"{m}_std")
-                for m in metric_cols
-            ]
-        ).sort("job_id")
+                .alias("best_seed"),
+                
+                # 1. Keep the metrics for the best seed
+                *[
+                    pl.col(m)
+                    .sort_by(target_metric, descending=True)
+                    .first()
+                    .alias(f"{m}")
+                    for m in metric_cols
+                ],
+                
+                # 2. Calculate fractional error in percent: (std / mean) * 100
+                *[
+                    (pl.col(m).std() / pl.col(m).mean() * 100).alias(f"{m}_ferr") 
+                    for m in metric_cols
+                ],
+            )
+            .sort("job_id")
+        )
+
         reduced_core = reduced_core.select(["job_id", pl.all().exclude("job_id")])
 
-        pprint(reduced_core)
+        assert len(reduced_core) == 36
+
+        # pprint(reduced_core)
+
+        first_question = reduced_core.filter(
+            (pl.col("downsample_factor") == 1) &
+            (pl.col("trap_type") == "on_axis") &
+            (pl.col("initial_epsilon") == 0.0)
+        )
+
+        pprint(first_question)

@@ -328,7 +328,6 @@ class JaxHologramBackend:
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
 
-
     def __run_gd(self, smooth_lambda=0.0):
         logger.info(f"Solving for Gradient Descent at native resolution.")
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
@@ -337,11 +336,13 @@ class JaxHologramBackend:
 
         target_intensity_native = target_amp_native**2
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
-        blur_otf = get_gaussian_blur_otf(self.source_amp.shape, self.config.smooth_sigma)
+        blur_otf = get_gaussian_blur_otf(
+            self.source_amp.shape, self.config.smooth_sigma
+        )
 
         def loss_fn(phase, normed=False):
             complex_phasor = jnp.exp(1j * phase)
-            
+
             # IN-LOOP BLUR: Apply physics before propagating
             if self.config.smooth_phase:
                 blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phasor))
@@ -353,8 +354,12 @@ class JaxHologramBackend:
             forward_intensity = jnp.abs(complex_ff) ** 2
 
             if normed:
-                norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
-                norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
+                norm_inferred = forward_intensity / (
+                    jnp.mean(forward_intensity) + 1e-12
+                )
+                norm_target = target_intensity_native / (
+                    jnp.mean(target_intensity_native) + 1e-12
+                )
                 diff = norm_inferred - norm_target
             else:
                 diff = forward_intensity - target_intensity_native
@@ -379,17 +384,23 @@ class JaxHologramBackend:
             phase, opt_state, key, _ = carry
             key, subkey = jax.random.split(key)
 
-            (loss_val, (inferred_intensity, complex_phasor)), grads = loss_and_grad(phase)
+            (loss_val, (inferred_intensity, complex_phasor)), grads = loss_and_grad(
+                phase
+            )
             updates, opt_state = optimizer.update(grads, opt_state, phase)
 
             new_phase = optax.apply_updates(phase, updates)
 
-            epsilon = self.config.initial_epsilon * jnp.exp(-self.config.anneal_rate * step_idx)
+            epsilon = self.config.initial_epsilon * jnp.exp(
+                -self.config.anneal_rate * step_idx
+            )
             key_phase, key_mask = jax.random.split(subkey, 2)
-            random_phases = jax.random.uniform(key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi)
+            random_phases = jax.random.uniform(
+                key_phase, phase.shape, minval=-jnp.pi, maxval=jnp.pi
+            )
             explore_mask = jax.random.uniform(key_mask, phase.shape) < epsilon
             new_phase = jnp.where(explore_mask, random_phases, new_phase)
-            
+
             new_phase = jnp.mod(new_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
             metrics = compute_step_metrics_jax(
@@ -404,9 +415,11 @@ class JaxHologramBackend:
 
         opt_state = optimizer.init(initial_phase_native)
         step_key = jax.random.PRNGKey(self.config.random_seed)
-        
+
         # Initialize a dummy phasor for the carry state
-        init_physical_phasor = jnp.zeros_like(initial_phase_native, dtype=jnp.complex128)
+        init_physical_phasor = jnp.zeros_like(
+            initial_phase_native, dtype=jnp.complex128
+        )
 
         # The scan now only accumulates the metrics in history
         (final_latent_phase, _, _, final_complex_phasor_native), history = jax.lax.scan(
@@ -414,7 +427,7 @@ class JaxHologramBackend:
             (initial_phase_native, opt_state, step_key, init_physical_phasor),
             jnp.arange(self.config.maxiter),
         )
-        
+
         final_phase_native = jnp.angle(final_complex_phasor_native)
         # TODO
         # if self.config.smooth_phase:
@@ -422,7 +435,7 @@ class JaxHologramBackend:
         #     blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
         #
         #     final_phase_native = jnp.angle(blurred_complex)
-        
+
         final_complex_ff_native = propagate_ff_native(
             source_amp_native * jnp.exp(1j * final_phase_native)
         )
@@ -433,9 +446,11 @@ class JaxHologramBackend:
         final_phase = jnp.mod(final_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
 
         return np.asarray(final_phase), np.asarray(final_intensity), history
-        
+
     def __run_gd_bp_limited(self, downsample_factor=4, interp_method="lanczos3"):
-        logger.info(f"Assuming a band-limited slm phase space with ds={downsample_factor}.")
+        logger.info(
+            f"Assuming a band-limited slm phase space with ds={downsample_factor}."
+        )
 
         source_amp_native = jnp.fft.ifftshift(self.source_amp)
         target_amp_native = jnp.fft.ifftshift(self.target_amp)
@@ -475,7 +490,7 @@ class JaxHologramBackend:
             )
 
             complex_phasor_full = real_full + 1j * imag_full
-            
+
             # Apply exact Gaussian physics inside the loss gradient calculation
             blurred_complex = jnp.fft.ifft2(
                 blur_otf * jnp.fft.fft2(complex_phasor_full)
@@ -549,7 +564,7 @@ class JaxHologramBackend:
 
         opt_state = optimizer.init(initial_sub_phase)
         step_key = jax.random.PRNGKey(self.config.random_seed)
-        
+
         # Initialize a dummy phasor for the carry state
         init_physical_phasor = jnp.zeros(full_shape, dtype=jnp.complex128)
 
@@ -568,7 +583,7 @@ class JaxHologramBackend:
         )
         final_intensity_native = jnp.abs(final_complex_ff_native) ** 2
 
-        # 
+        #
         # if self.config.smooth_phase:
         #     complex_phase = jnp.exp(1j * final_phase_native)
         #     blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))

@@ -122,6 +122,7 @@ def reduce_stack_similar_crops(
 
     return reduced_profile
 
+
 # DEPRECATE
 def extract_background_artifacts(
     forward_intensity,
@@ -936,8 +937,20 @@ def construct_jobs() -> Tuple[Job, ...]:
 
     jobs = []
 
-    for method, backend, ds_factor, smooth, trap_conf, initial_epsilon in itertools.product(
-        methods, solver_backends, downsample_factors, smooth_phases, trap_configs, initial_epsilons
+    for (
+        method,
+        backend,
+        ds_factor,
+        smooth,
+        trap_conf,
+        initial_epsilon,
+    ) in itertools.product(
+        methods,
+        solver_backends,
+        downsample_factors,
+        smooth_phases,
+        trap_configs,
+        initial_epsilons,
     ):
         # NB downsampling applies to GD only
         if method != "GD" and ds_factor > 1:
