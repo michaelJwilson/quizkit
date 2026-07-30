@@ -1,10 +1,11 @@
 import atexit
 import logging
 import random
+import itertools
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, ClassVar, NamedTuple, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -18,7 +19,13 @@ from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
 from slmsuite.holography.algorithms import SpotHologram
 
-from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs, TrapConfig
+from quizkit.configs import (
+    ConfigMixin,
+    RunConfig,
+    SolverConfig,
+    TrapConfigs,
+    TrapConfig,
+)
 from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
 from quizkit.plotting import (
@@ -903,6 +910,7 @@ class HologramExperimentSolver:
             dataset_name="off_target_intensity_stacks",
         )
 
+
 class Job(NamedTuple):
     method: str
     solver_backend: str
@@ -912,11 +920,12 @@ class Job(NamedTuple):
     trap_config: TrapConfig
 
 
-def run_phase_retrieval():
+def construct_jobs() -> Tuple[Job, ...]:
     methods = ("GD", "GS")
-    solver_backend = "jax"  # {"slm_suite", "jax"}
-    num_random_seeds = 1
-    downsample_factors = (1,)
+    solver_backends = ("jax",)
+    num_random_seeds = 10
+    downsample_factors = (1, 4)
+    smooth_phases = (False, True)
 
     # NB (float, float) or None; shift from zeroth order in the far-field basis. If None, defaults to the zeroth order position.
     #    see https://github.com/holodyne/slmsuite/blob/39243f081de020ad3ba74e672d126694b80778d2/slmsuite/holography/algorithms/_spots.py#L1423
@@ -924,70 +933,89 @@ def run_phase_retrieval():
     # `"knm"``, this is ``(shape[1], shape[0])/2``.
     # ``"kxy"``, this is ``(0,0)``.
     # ``"ij"``, this is the pixel position of the zeroth order on the camera (via Fourier calibration).
-    trap_config = TrapConfigs.ON_AXIS.to_config()
-    trap_config_off_center = TrapConfigs.OFF_AXIS.to_config()
+    trap_configs = (TrapConfigs.ON_AXIS.to_config(), TrapConfigs.OFF_AXIS.to_config())
 
-    trap_configs = (trap_config_off_center,)
+    jobs = []
 
-    slm_shape = (1200, 1920)  # (height, width) in pixels,
+    for method, backend, ds_factor, smooth, trap_conf in itertools.product(
+        methods, solver_backends, downsample_factors, smooth_phases, trap_configs
+    ):
+        # NB downsampling applies to GS only
+        if method != "GS" and ds_factor > 1:
+            continue
 
-    jobs = (
-        Job(
-            method="GD",
-            solver_backend="jax",
-            num_random_seeds=1,
-            downsample_factor=1,
-            smooth_phase=True,
-            trap_config=trap_config_off_center
-        ), 
-    )
-
-    for job in jobs:
-        run_config = RunConfig(
-            wavelength=780e-9,
-            pixel_pitch=8.0e-6,
-            slm_shape=slm_shape,
-            trap_config=job.trap_config,
+        jobs.append(
+            Job(
+                method=method,
+                solver_backend=backend,
+                num_random_seeds=num_random_seeds,
+                downsample_factor=ds_factor,
+                smooth_phase=smooth,
+                trap_config=trap_conf,
+            )
         )
 
-        pprint(run_config, expand_all=True)
+    return tuple(jobs)
 
-        # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
-        exp = HologramExperiment(run_config)
-        exp.plot(base_dir="./results")
-        exp.write_h5(base_dir="./results")
 
-        for random_seed in np.arange(job.num_random_seeds):
-            random_seed = int(42 + random_seed)
+def run_phase_retrieval():
+    jobs = construct_jobs()
+    slm_shape = (1200, 1920)  # (height, width) in pixels,
 
-            solver_config = SolverConfig(
-                method=job.method,  # {"GS", "GD", "AA", "HIO"}
-                maxiter=200,
-                random_seed=int(random_seed),
-                smooth_phase=job.smooth_phase,
-                solver_backend=job.solver_backend,  # {"slm_suite", "jax"}
+    for job in jobs:
+        try:
+            run_config = RunConfig(
+                wavelength=780e-9,
+                pixel_pitch=8.0e-6,
+                slm_shape=slm_shape,
+                trap_config=job.trap_config,
             )
 
-            pprint(solver_config, expand_all=True)
+            pprint(run_config, expand_all=True)
 
-            solver = HologramExperimentSolver(exp, solver_config)
-            solver.optimize()
-            solver.plot(base_dir="./results")
-            solver.write_h5(base_dir="./results")
+            # NB h5diff -d 1e-3 results/data/exercise_reference_gs_20260727_120804.h5 results/data/exercise_gs_20260727_120932.h5
+            exp = HologramExperiment(run_config)
+            exp.plot(base_dir="./results")
+            exp.write_h5(base_dir="./results")
 
-            metrics = PerformanceMetrics.from_solver(solver)
+            for random_seed in np.arange(job.num_random_seeds):
+                random_seed = int(42 + random_seed)
 
-            pprint(metrics, expand_all=True)
+                solver_config = SolverConfig(
+                    method=job.method,  # {"GS", "GD", "AA", "HIO"}
+                    maxiter=200,
+                    random_seed=int(random_seed),
+                    smooth_phase=job.smooth_phase,
+                    downsample_factor=job.downsample_factor,
+                    solver_backend=job.solver_backend,  # {"slm_suite", "jax"}
+                )
 
-            PerformanceMetrics.write_tex_table(
-                filepath=exp._get_run_dir("./results")
-                / f"phase_retrieval/{solver.config.hash}"
-                / "performance_metrics.tex",
-                metrics_by_run={solver.config.method: metrics.to_dict()},
-                caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
+                pprint(solver_config, expand_all=True)
+
+                solver = HologramExperimentSolver(exp, solver_config)
+                solver.optimize()
+                solver.plot(base_dir="./results")
+                solver.write_h5(base_dir="./results")
+
+                metrics = PerformanceMetrics.from_solver(solver)
+
+                pprint(metrics, expand_all=True)
+
+                PerformanceMetrics.write_tex_table(
+                    filepath=exp._get_run_dir("./results")
+                    / f"phase_retrieval/{solver.config.hash}"
+                    / "performance_metrics.tex",
+                    metrics_by_run={solver.config.method: metrics.to_dict()},
+                    caption=f"Computed performance metrics for the {solver.config.method}-optimized SLM phase.",
+                )
+
+                # solver.update_aim(experiment_name=solver_config.hash)
+
+        except Exception as e:
+            logger.error(
+                f"Run failed for {job.method} (Seed: {random_seed}): {e}", exc_info=True
             )
-
-            # solver.update_aim(experiment_name=solver_config.hash)
+            continue
 
     logger.info(f"Done.")
 

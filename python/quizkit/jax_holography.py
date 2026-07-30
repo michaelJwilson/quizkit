@@ -132,7 +132,9 @@ class JaxHologramBackend:
         elif method == "GD":
             if getattr(self.config, "downsample_factor", 1) > 1:
                 self.final_phase, self.final_intensity, self.history = (
-                    self.__run_gd_bp_limited(downsample_factor=self.config.downsample_factor)
+                    self.__run_gd_bp_limited(
+                        downsample_factor=self.config.downsample_factor
+                    )
                 )
             else:
                 self.final_phase, self.final_intensity, self.history = self.__run_gd()
@@ -439,7 +441,10 @@ class JaxHologramBackend:
 
         target_intensity_native = target_amp_native**2
         full_shape = self.source_amp.shape
-        sub_shape = (full_shape[0] // downsample_factor, full_shape[1] // downsample_factor)
+        sub_shape = (
+            full_shape[0] // downsample_factor,
+            full_shape[1] // downsample_factor,
+        )
 
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
 
