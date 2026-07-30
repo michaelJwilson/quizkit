@@ -16,7 +16,7 @@ from quizkit.run_phase_retrieval import PerformanceMetrics
 
 #
 #  streamlit run python/quizkit/background_dashboard.py
-# 
+#
 
 st.set_page_config(page_title="Artifact Analysis", layout="wide")
 
@@ -153,7 +153,7 @@ def load_data(base_dir: str, r_hash: str, s_hash: str):
 def render_pdf(file_path):
     """Helper to render a PDF using a base64 iframe inside Streamlit."""
     with open(file_path, "rb") as f:
-        base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500" type="application/pdf"></iframe>'
     st.markdown(pdf_display, unsafe_allow_html=True)
 
@@ -347,7 +347,7 @@ with col_art_list:
     st.dataframe(
         display_df.style.format({"rel_power": "{:.2f}%"}), use_container_width=True
     )
-    
+
     # Process Map Selection
     selected_id_from_map = int(active_df["id"].iloc[0])
     if event and event.selection.points:
@@ -410,10 +410,12 @@ tab_pr, tab_exp = st.tabs(["Phase Retrieval Results", "Experiment Setup"])
 
 with tab_pr:
     if pr_plots_dir.exists() and any(pr_plots_dir.iterdir()):
-        pr_files = [f for f in pr_plots_dir.iterdir() if f.suffix.lower() == '.pdf']
+        pr_files = [f for f in pr_plots_dir.iterdir() if f.suffix.lower() == ".pdf"]
         if pr_files:
             # Create a dropdown to select which plot to view to save vertical space
-            selected_pr_plot = st.selectbox("Select Phase Retrieval Plot", pr_files, format_func=lambda x: x.name)
+            selected_pr_plot = st.selectbox(
+                "Select Phase Retrieval Plot", pr_files, format_func=lambda x: x.name
+            )
             render_pdf(selected_pr_plot)
         else:
             st.info("No PDF plots found in Phase Retrieval output.")
@@ -422,9 +424,11 @@ with tab_pr:
 
 with tab_exp:
     if exp_plots_dir.exists() and any(exp_plots_dir.iterdir()):
-        exp_files = [f for f in exp_plots_dir.iterdir() if f.suffix.lower() == '.pdf']
+        exp_files = [f for f in exp_plots_dir.iterdir() if f.suffix.lower() == ".pdf"]
         if exp_files:
-            selected_exp_plot = st.selectbox("Select Experiment Plot", exp_files, format_func=lambda x: x.name)
+            selected_exp_plot = st.selectbox(
+                "Select Experiment Plot", exp_files, format_func=lambda x: x.name
+            )
             render_pdf(selected_exp_plot)
         else:
             st.info("No PDF plots found in Experiment output.")

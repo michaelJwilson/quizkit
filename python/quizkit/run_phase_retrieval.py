@@ -21,7 +21,11 @@ from slmsuite.holography.algorithms import SpotHologram
 from quizkit.configs import ConfigMixin, RunConfig, SolverConfig, TrapConfigs
 from quizkit.hologram_experiment import HologramExperiment
 from quizkit.jax_holography import JaxHologramBackend
-from quizkit.plotting import plot_scalar_field, plot_stack_with_marginals, plot_unraveled_trap_profiles
+from quizkit.plotting import (
+    plot_scalar_field,
+    plot_stack_with_marginals,
+    plot_unraveled_trap_profiles,
+)
 from quizkit.writers import write_hdf5
 
 import aim.ext.cleanup
@@ -164,6 +168,7 @@ def extract_background_artifacts(
 
     return artifacts, residual_int
 
+
 def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
     x_val, y_val = coords
     wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
@@ -171,11 +176,13 @@ def sinc2_2d(coords, I0, x0, y0, wx, wy, bg):
     sinc2_y = np.sinc((y_val - y0) / wy) ** 2
     return I0 * sinc2_x * sinc2_y + bg
 
+
 def gaussian_2d(coords, I0, x0, y0, wx, wy, bg):
     x_val, y_val = coords
     wx, wy = np.maximum(abs(wx), 1e-9), np.maximum(abs(wy), 1e-9)
     r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
     return I0 * np.exp(-0.5 * r2) + bg
+
 
 def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
     # Separable 2D Lorentzian (better matches rectangular aperture cross-wings)
@@ -185,6 +192,7 @@ def lorentzian_2d(coords, I0, x0, y0, wx, wy, bg):
     ly = 1.0 / (1.0 + ((y_val - y0) / wy) ** 2)
     return I0 * lx * ly + bg
 
+
 def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
     # Elliptical Moffat profile (beta=2.5 is standard for optical turbulence/scattering)
     x_val, y_val = coords
@@ -192,12 +200,14 @@ def moffat_2d(coords, I0, x0, y0, wx, wy, bg):
     r2 = ((x_val - x0) / wx) ** 2 + ((y_val - y0) / wy) ** 2
     return I0 * (1.0 + r2) ** (-2.5) + bg
 
+
 psf_models = {
     "sinc2": sinc2_2d,
     "gaussian": gaussian_2d,
     "lorentzian": lorentzian_2d,
     "moffat": moffat_2d,
 }
+
 
 def fit_forward_psf(z_data, model="gaussian", fit_background=True):
     """
@@ -271,33 +281,43 @@ def calculate_diffuse_efficiencies(
     array_center: tuple[int, int] | None = None,
 ) -> tuple[float, float]:
     if psf_model not in psf_models:
-        raise ValueError(f"Unknown PSF model '{psf_model}'. Available: {list(psf_models.keys())}")
-        
+        raise ValueError(
+            f"Unknown PSF model '{psf_model}'. Available: {list(psf_models.keys())}"
+        )
+
     fit_func = psf_models[psf_model]
-    
+
     _, _, _, wx, wy, _ = psf_params
-    
+
     h, w = forward_intensity.shape
     total_power = float(np.sum(forward_intensity))
 
     # TODO
     stack_h, stack_w = 50, 50
-    ky, kx = np.arange(-stack_h // 2, stack_h // 2), np.arange(-stack_w // 2, stack_w // 2)
+    ky, kx = np.arange(-stack_h // 2, stack_h // 2), np.arange(
+        -stack_w // 2, stack_w // 2
+    )
     X, Y = np.meshgrid(kx, ky)
-    
-    psf_kernel = fit_func((X, Y), 1.0, 0.0, 0.0, wx, wy, 0.0)
-    
-    target_sum = np.sum(target)
-    normalized_target = target * (total_power / target_sum) if target_sum > 0 else target
 
-    diffuse_target = fftconvolve(normalized_target, psf_kernel, mode='same')
-    
+    psf_kernel = fit_func((X, Y), 1.0, 0.0, 0.0, wx, wy, 0.0)
+
+    target_sum = np.sum(target)
+    normalized_target = (
+        target * (total_power / target_sum) if target_sum > 0 else target
+    )
+
+    diffuse_target = fftconvolve(normalized_target, psf_kernel, mode="same")
+
     # TODO
     diffuse_target = np.clip(diffuse_target, 0.0, 1.0)
 
-    efficiency = float(np.sum(forward_intensity * normalized_target) / (total_power + 1e-12))
-    efficiency_diffuse = float(np.sum(forward_intensity * diffuse_target) / (total_power + 1e-12))
-    
+    efficiency = float(
+        np.sum(forward_intensity * normalized_target) / (total_power + 1e-12)
+    )
+    efficiency_diffuse = float(
+        np.sum(forward_intensity * diffuse_target) / (total_power + 1e-12)
+    )
+
     # -------------------------------------------------------------------------
     # 2. 0th Order PSF Efficiency
     # -------------------------------------------------------------------------
@@ -310,9 +330,11 @@ def calculate_diffuse_efficiencies(
     Y_full, X_full = np.ogrid[:h, :w]
 
     # TODO
-    zeroth_mask = fit_func((X_full, Y_full), 1.0, cx, cy, wx, wy, 0.0)    
-    efficiency_zeroth = float(np.sum(forward_intensity * zeroth_mask) / (total_power + 1e-12))
-    
+    zeroth_mask = fit_func((X_full, Y_full), 1.0, cx, cy, wx, wy, 0.0)
+    efficiency_zeroth = float(
+        np.sum(forward_intensity * zeroth_mask) / (total_power + 1e-12)
+    )
+
     return efficiency, efficiency_diffuse, efficiency_zeroth
 
 
@@ -336,7 +358,7 @@ class PerformanceMetrics(ConfigMixin):
         "psf_wx": "Best-fit forward PSF width (x-axis) [pixels]",
         "psf_wy": "Best-fit forward PSF width (y-axis) [pixels]",
         "ghost_to_trap_med_ratio": "Ratio of max background intensity to median trap power",
-        "runtime": "Time taken to solve the phase retrieval problem [seconds]"
+        "runtime": "Time taken to solve the phase retrieval problem [seconds]",
     }
 
     uniformity: float
@@ -372,7 +394,7 @@ class PerformanceMetrics(ConfigMixin):
         psf_model: str | None = None,
         psf_params: tuple | None = None,
         array_center: tuple[int, int] | None = None,
-        runtime: float | None = None
+        runtime: float | None = None,
     ) -> "PerformanceMetrics":
         ff_int = np.asarray(forward_intensity, dtype=np.float64)
         target_int = np.asarray(target_intensity, dtype=np.float64)
@@ -420,8 +442,10 @@ class PerformanceMetrics(ConfigMixin):
         uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
 
         # NB normalized shannon entropy
-        trap_ps = trap_powers / (sig_power + 1e-12) 
-        entropy = float(-np.sum(trap_ps * np.log(trap_ps + 1e-12)) / np.log(num_traps + 1e-12))
+        trap_ps = trap_powers / (sig_power + 1e-12)
+        entropy = float(
+            -np.sum(trap_ps * np.log(trap_ps + 1e-12)) / np.log(num_traps + 1e-12)
+        )
 
         ghost_to_trap_med_ratio = max_bg / (trap_med + 1e-12)
 
@@ -479,7 +503,7 @@ class PerformanceMetrics(ConfigMixin):
             array_center=solver.exp.run_config.array_center,
             runtime=solver.config.runtime,
         )
-    
+
     @classmethod
     def write_tex_table(
         cls,
@@ -603,9 +627,7 @@ class HologramExperimentSolver:
 
         self.config.runtime = time.time() - start_time
 
-        logger.info(
-            f"Solved phase retrieval problem in {self.config.runtime:.2f}s"
-        )
+        logger.info(f"Solved phase retrieval problem in {self.config.runtime:.2f}s")
 
         forward_stack_mean = np.asarray(
             reduce_stack_similar_crops(
@@ -619,8 +641,10 @@ class HologramExperimentSolver:
 
         # TODO
         self.forward_psf_model = "gaussian"
-        forward_psf_model_params, forward_psf_xprofile, forward_psf_yprofile = fit_forward_psf(
-            forward_stack_mean, model=self.forward_psf_model, fit_background=False
+        forward_psf_model_params, forward_psf_xprofile, forward_psf_yprofile = (
+            fit_forward_psf(
+                forward_stack_mean, model=self.forward_psf_model, fit_background=False
+            )
         )
 
         self.forward_psf_model_params = forward_psf_model_params
@@ -746,13 +770,13 @@ class HologramExperimentSolver:
             fit_y=np.log(self.forward_psf_yprofile + 1e-12),
         )
 
-        # TODO  
+        # TODO
         plot_unraveled_trap_profiles(
             forward_intensity=self.forward_intensity,
             trap_coords=np.array(self.exp.trap_coords),
             wx=self.forward_psf_model_params[3],
             wy=self.forward_psf_model_params[4],
-            plot_path=plot_dir / "trap_profiles_unraveled.pdf"
+            plot_path=plot_dir / "trap_profiles_unraveled.pdf",
         )
 
         # NB forward intensity trap stack std. dev.

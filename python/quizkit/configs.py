@@ -22,11 +22,11 @@ class ConfigMixin:
 
     def _generate_param_hash(self) -> str:
         data = self.to_dict()
-        
+
         # Remove volatile or output fields that do not define the parameter set
         for key in ["hash", "timestamp", "solver_runtime"]:
             data.pop(key, None)
-            
+
         # Recursive pop for nested configs (like trap_config inside RunConfig)
         if "trap_config" in data and isinstance(data["trap_config"], dict):
             data["trap_config"].pop("hash", None)
@@ -34,9 +34,9 @@ class ConfigMixin:
 
         # sort_keys=True guarantees identical parameter sets produce identical strings
         param_string = json.dumps(data, sort_keys=True)
-        
+
         # Use MD5 for a fast, short, deterministic hex ID
-        return hashlib.md5(param_string.encode('utf-8')).hexdigest()[:7]
+        return hashlib.md5(param_string.encode("utf-8")).hexdigest()[:7]
 
 
 @dataclass
@@ -107,7 +107,7 @@ class SolverConfig(ConfigMixin):
     smooth_phase: bool = True
     smooth_sigma: int = 2  # pixels
 
-    # NB 
+    # NB
     downsample_factor: int = 4
 
     loss_norm: str = "L2"  # {"L1", "L2"}

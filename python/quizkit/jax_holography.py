@@ -55,7 +55,7 @@ def compute_step_metrics_jax(
     trap_powers = jnp.bincount(
         flat_labels, weights=flat_intensity, length=num_traps + 1
     )[1:]
-    
+
     trap_min = jnp.min(trap_powers)
     trap_max = jnp.max(trap_powers)
     trap_med = jnp.median(trap_powers)
@@ -77,7 +77,7 @@ def compute_step_metrics_jax(
     )
 
     uniformity = 1.0 - ((trap_max - trap_min) / (trap_max + trap_min + 1e-12))
-    
+
     trap_ps = trap_powers / (sig_power + 1e-12)
     entropy = -jnp.sum(trap_ps * jnp.log(trap_ps + 1e-12)) / jnp.log(num_traps + 1e-12)
 
@@ -131,7 +131,9 @@ class JaxHologramBackend:
             self.final_phase, self.final_intensity, self.history = self.__run_gs()
         elif method == "GD":
             if getattr(self.config, "downsample_factor", 1) > 1:
-                self.final_phase, self.final_intensity, self.history = self.__run_gd_bp_limited()
+                self.final_phase, self.final_intensity, self.history = (
+                    self.__run_gd_bp_limited()
+                )
             else:
                 self.final_phase, self.final_intensity, self.history = self.__run_gd()
         elif method == "AA":
@@ -440,26 +442,36 @@ class JaxHologramBackend:
         sub_shape = (full_shape[0] // ds_factor, full_shape[1] // ds_factor)
 
         optimizer = optax.adam(learning_rate=self.config.learning_rate)
-        
+
         blur_otf = get_gaussian_blur_otf(
             self.source_amp.shape, self.config.smooth_sigma
         )
 
         initial_complex = jnp.exp(1j * initial_phase_native)
         # Upgrade to lanczos3 for a cleaner frequency cutoff
-        real_sub_init = jax.image.resize(jnp.real(initial_complex), sub_shape, method=interp_method)
-        imag_sub_init = jax.image.resize(jnp.imag(initial_complex), sub_shape, method=interp_method)
+        real_sub_init = jax.image.resize(
+            jnp.real(initial_complex), sub_shape, method=interp_method
+        )
+        imag_sub_init = jax.image.resize(
+            jnp.imag(initial_complex), sub_shape, method=interp_method
+        )
         initial_sub_phase = jnp.angle(real_sub_init + 1j * imag_sub_init)
 
         def loss_fn(sub_phase, normed=False):
             # 1. Band-limited reconstruction (upsampling) via Lanczos
             complex_sub = jnp.exp(1j * sub_phase)
-            real_full = jax.image.resize(jnp.real(complex_sub), full_shape, method=interp_method)
-            imag_full = jax.image.resize(jnp.imag(complex_sub), full_shape, method=interp_method)
-            
+            real_full = jax.image.resize(
+                jnp.real(complex_sub), full_shape, method=interp_method
+            )
+            imag_full = jax.image.resize(
+                jnp.imag(complex_sub), full_shape, method=interp_method
+            )
+
             complex_phasor_full = real_full + 1j * imag_full
-            blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phasor_full))
-            
+            blurred_complex = jnp.fft.ifft2(
+                blur_otf * jnp.fft.fft2(complex_phasor_full)
+            )
+
             complex_phasor_full = blurred_complex / (jnp.abs(blurred_complex) + 1e-12)
 
             complex_nf = source_amp_native * complex_phasor_full
@@ -467,8 +479,12 @@ class JaxHologramBackend:
             forward_intensity = jnp.abs(complex_ff) ** 2
 
             if normed:
-                norm_inferred = forward_intensity / (jnp.mean(forward_intensity) + 1e-12)
-                norm_target = target_intensity_native / (jnp.mean(target_intensity_native) + 1e-12)
+                norm_inferred = forward_intensity / (
+                    jnp.mean(forward_intensity) + 1e-12
+                )
+                norm_target = target_intensity_native / (
+                    jnp.mean(target_intensity_native) + 1e-12
+                )
                 diff = norm_inferred - norm_target
             else:
                 diff = forward_intensity - target_intensity_native
@@ -479,7 +495,7 @@ class JaxHologramBackend:
                 loss_val = jnp.mean(diff**2)
             else:
                 raise ValueError(f"Unsupported loss norm: {self.config.loss_norm}")
-            
+
             return loss_val, (forward_intensity, complex_phasor_full)
 
         loss_and_grad = jax.value_and_grad(loss_fn, has_aux=True)
@@ -489,8 +505,10 @@ class JaxHologramBackend:
             sub_phase, opt_state, key = carry
             key, subkey = jax.random.split(key)
 
-            (loss_val, (inferred_intensity, complex_phasor_full)), grads = loss_and_grad(sub_phase)
-            
+            (loss_val, (inferred_intensity, complex_phasor_full)), grads = (
+                loss_and_grad(sub_phase)
+            )
+
             updates, opt_state = optimizer.update(grads, opt_state, sub_phase)
             new_sub_phase = optax.apply_updates(sub_phase, updates)
 
@@ -508,7 +526,7 @@ class JaxHologramBackend:
             new_sub_phase = jnp.where(explore_mask, random_phases, new_sub_phase)
 
             new_sub_phase = jnp.mod(new_sub_phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-            
+
             metrics = compute_step_metrics_jax(
                 inferred_intensity,
                 target_intensity_native,
@@ -534,9 +552,9 @@ class JaxHologramBackend:
         if self.config.smooth_phase:
             complex_phase = jnp.exp(1j * final_phase_native)
             blurred_complex = jnp.fft.ifft2(blur_otf * jnp.fft.fft2(complex_phase))
-             
+
             final_phase_native = jnp.angle(blurred_complex)
-        
+
         final_complex_ff_native = propagate_ff_native(
             source_amp_native * jnp.exp(1j * final_phase_native)
         )
