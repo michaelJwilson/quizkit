@@ -240,9 +240,9 @@ if __name__ == "__main__":
                     for m in metric_cols
                 ],
                 
-                # 2. Calculate fractional error in percent: (std / mean) * 100
+                # 2. Calculate fractional error in percent: (std / mean)
                 *[
-                    (pl.col(m).std() / pl.col(m).mean() * 100).alias(f"{m}_ferr") 
+                    (pl.col(m).std() / pl.col(m).mean()).alias(f"{m}_ferr") 
                     for m in metric_cols
                 ],
             )
@@ -262,3 +262,49 @@ if __name__ == "__main__":
         )
 
         pprint(first_question)
+
+        def get_run_key(method_str: str, is_smooth: bool) -> str:
+            if method_str == "GD" and not is_smooth:
+                return "GD"
+            elif method_str == "GS" and not is_smooth:
+                return "GS"
+            elif method_str == "GD" and is_smooth:
+                return "GD-SMOOTH"
+            elif method_str == "GS" and is_smooth:
+                return "GS-SMOOTH"
+            return "UNKNOWN"
+
+        metrics_by_run = {}
+
+        for row in first_question.iter_rows(named=True):
+            method = row["method"]
+            smooth = row["smooth_phase"]
+            
+            run_key = get_run_key(method, smooth)
+            
+            run_metrics = {}
+            for m in metric_cols:
+                # If your columns have "_best", extract the raw metric name
+                # If they don't, you can just use `row[m]`
+                val = row.get(m)
+                if val is not None:
+                     run_metrics[m] = val
+                     
+            metrics_by_run[run_key] = run_metrics
+        
+        formatted_metrics_by_run = {
+            "GD": metrics_by_run["GD"],
+            "GS": metrics_by_run["GS"],
+            "GD-$\\mathcal{C}(\\phi)$": metrics_by_run["GD-SMOOTH"],
+            "GS-$\\mathcal{C}(\\phi)$": metrics_by_run["GS-SMOOTH"],
+        }
+
+        out_dir = Path("./runs_analysis")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        
+        PerformanceMetrics.write_tex_table(
+            filepath=out_dir / "first_question.tex",
+            metrics_by_run=formatted_metrics_by_run,
+            caption="Comparison of Gradient Descent (GD) and Gerchberg-Saxton (GS) with and without phase smoothing $\\mathcal{C}(\\phi)$. Evaluated on-axis with downsample factor 1 and zero initial epsilon.",
+            label="tab:gd_vs_gs_smooth"
+        )

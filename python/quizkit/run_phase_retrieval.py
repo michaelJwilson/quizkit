@@ -349,7 +349,7 @@ class PerformanceMetrics(ConfigMixin):
         "uniformity": "Michelson uniformity of integrated trap powers",
         "entropy": "Shannon entropy of normalized integrated trap powers",
         "efficiency": "Fraction of forward power within the target trap regions",
-        "efficiency_diffuse": "Fraction of forward power within the (best-fit) forward psf target trap regions (TBD)",
+        "efficiency_diffuse": "Fraction of forward power within the (best-fit) forward psf target trap regions", # TODO
         "stray_light_fraction": "Fraction of forward power outside the target trap regions (1 - efficiency)",
         "efficiency_perimeter": "Fraction of forward power within the trap array perimeter",
         "efficiency_dual": "Fraction of forward power within the dual array",
@@ -524,7 +524,10 @@ class PerformanceMetrics(ConfigMixin):
 
         n_runs = len(run_keys)
 
-        headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+        # TODO
+        # headers = [f"\\textbf{{{key.capitalize()}}}" for key in run_keys]
+        headers = [f"\\textbf{{{key}}}" for key in run_keys]
+
         c_cols = "c" * n_runs
         tabular_def = f"\\begin{{tabular}}{{l{c_cols}p{{11.5cm}}}}"
 
